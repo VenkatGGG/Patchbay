@@ -1,0 +1,14 @@
+{
+  "name": "patchbay",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "dev": "pnpm --filter @patchbay/web dev",
+    "web:build": "pnpm --filter @patchbay/web build",
+    "web:typecheck": "pnpm --filter @patchbay/web typecheck",
+    "agent:test": "go test ./agent/...",
+    "agent:run": "go run ./agent/cmd/patchbay-agent",
+    "check": "pnpm web:typecheck && pnpm web:build && pnpm agent:test"
+  }
+}
+
