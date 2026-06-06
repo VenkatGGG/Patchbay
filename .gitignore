@@ -1,0 +1,23 @@
+.DS_Store
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.turbo/
+
+# Go
+bin/
+*.test
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local data
+.patchbay/
+tmp/
+

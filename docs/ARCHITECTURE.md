@@ -1,0 +1,130 @@
+# Architecture
+
+Patchbay is a self-hosted control plane plus one or more environment-local Go
+agents. Tailscale provides private connectivity and machine identity. Patchbay
+owns product authorization, task policy, audit, evidence handling, and LLM
+synthesis.
+
+## High-Level Shape
+
+```text
+User
+  |
+  v
+Next.js Control Plane
+  |-- sessions
+  |-- agents
+  |-- tasks
+  |-- audit
+  |-- Gemini synthesis
+  |
+  v
+Tailscale Integration
+  |-- auth key creation
+  |-- tagged node identity
+  |-- session-scoped enrollment
+  |
+  v
+Go Agents
+  |-- capability registry
+  |-- local policy guard
+  |-- read-only collectors
+  |-- event streaming
+```
+
+## Control Plane
+
+The control plane is implemented as a TypeScript/Next.js app for the initial
+self-hosted project.
+
+Responsibilities:
+
+- Environment registry.
+- Agent registry.
+- Debug session lifecycle.
+- Task dispatch.
+- Event ingestion.
+- Audit log.
+- LLM provider abstraction.
+- Tailscale automation boundary.
+
+For v0, the control plane can use an in-memory store for local development. The
+data model should stay close to what a later Postgres implementation needs.
+
+## Agent
+
+The agent is a Go process deployed inside each target environment.
+
+Responsibilities:
+
+- Enroll with the control plane.
+- Report capabilities.
+- Poll for assigned tasks.
+- Enforce local read-only policy.
+- Execute diagnostics.
+- Stream task events and results.
+
+The agent exposes capabilities rather than arbitrary commands.
+
+Initial capabilities:
+
+- `system.info`
+- `process.list`
+- `disk.usage`
+- `network.connections`
+- `logs.search`
+
+## Session Model
+
+Every task belongs to a debug session.
+
+```text
+DebugSession
+  id
+  name
+  environment_id
+  mode = read_only
+  requested_by
+  status
+  expires_at
+  allowed_capabilities
+```
+
+Agents should reject work outside an active session.
+
+## Tailscale Model
+
+Patchbay should automate Tailscale rather than requiring users to hand-wire the
+network every time.
+
+Target model:
+
+1. User configures Tailscale OAuth credentials in the self-hosted control plane.
+2. Patchbay creates tagged, short-lived auth keys for agents.
+3. Agents join with session or environment-scoped identity.
+4. Patchbay tears down access after the session or environment expires.
+
+Tags should distinguish agents, environments, and future coordinators:
+
+```text
+tag:patchbay-agent
+tag:patchbay-env-prod
+tag:patchbay-session
+```
+
+Tailscale controls network reachability. Patchbay still performs capability and
+session authorization.
+
+## LLM Provider
+
+The LLM layer is provider-based. Gemini is the first implementation.
+
+The LLM receives redacted evidence and emits structured synthesis:
+
+- Summary.
+- Evidence list.
+- Likely causes.
+- Recommended next diagnostic steps.
+
+The LLM does not receive raw secrets and does not directly execute actions.
+
