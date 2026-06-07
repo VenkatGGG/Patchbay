@@ -28,7 +28,11 @@ export function ControlPlaneDashboard() {
   const [state, setState] = useState<ControlPlaneState>(emptyState);
   const [sessionName, setSessionName] = useState("checkout latency investigation");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
-  const [isBusy, setIsBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<
+    "refresh" | "session" | "diagnostic" | "synthesis" | null
+  >(null);
+  const [notice, setNotice] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
   const selectedSession = useMemo(
     () =>
@@ -54,15 +58,32 @@ export function ControlPlaneDashboard() {
         .filter((synthesis) => synthesis.sessionId === selectedSession.id)
         .at(-1)
     : undefined;
+  const taskSummary = summarizeTasks(selectedTasks);
+  const completionPercent =
+    selectedTasks.length === 0
+      ? 0
+      : Math.round((taskSummary.completed / selectedTasks.length) * 100);
+  const onlineAgents = state.agents.filter((agent) => agent.status === "online").length;
 
   async function refresh() {
-    const response = await fetch("/api/state", { cache: "no-store" });
-    setState(await response.json());
+    setBusyAction("refresh");
+    try {
+      const response = await fetch("/api/state", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`State refresh failed with ${response.status}`);
+      }
+      setState(await response.json());
+      setError("");
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function createSession() {
     if (!selectedEnvironment) return;
-    setIsBusy(true);
+    setBusyAction("session");
     try {
       const response = await fetch("/api/sessions", {
         method: "POST",
@@ -74,39 +95,61 @@ export function ControlPlaneDashboard() {
           ttlMinutes: 30
         })
       });
+      if (!response.ok) {
+        throw new Error(`Session creation failed with ${response.status}`);
+      }
       const session = (await response.json()) as DebugSession;
       setSelectedSessionId(session.id);
+      setNotice(`Started ${session.name}`);
+      setError("");
       await refresh();
+    } catch (caught) {
+      setError(messageFrom(caught));
     } finally {
-      setIsBusy(false);
+      setBusyAction(null);
     }
   }
 
   async function runDiagnostic() {
     if (!selectedSession) return;
-    setIsBusy(true);
+    setBusyAction("diagnostic");
     try {
-      await fetch(`/api/sessions/${selectedSession.id}/diagnostics`, {
+      const response = await fetch(`/api/sessions/${selectedSession.id}/diagnostics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenario: "latency_spike" })
       });
+      if (!response.ok) {
+        throw new Error(`Diagnostic run failed with ${response.status}`);
+      }
+      const tasks = (await response.json()) as DiagnosticTask[];
+      setNotice(`Queued ${tasks.length} read-only diagnostics`);
+      setError("");
       await refresh();
+    } catch (caught) {
+      setError(messageFrom(caught));
     } finally {
-      setIsBusy(false);
+      setBusyAction(null);
     }
   }
 
   async function synthesize() {
     if (!selectedSession) return;
-    setIsBusy(true);
+    setBusyAction("synthesis");
     try {
-      await fetch(`/api/sessions/${selectedSession.id}/synthesize`, {
+      const response = await fetch(`/api/sessions/${selectedSession.id}/synthesize`, {
         method: "POST"
       });
+      if (!response.ok) {
+        throw new Error(`Synthesis failed with ${response.status}`);
+      }
+      setNotice("Generated investigation synthesis");
+      setError("");
       await refresh();
+    } catch (caught) {
+      setError(messageFrom(caught));
     } finally {
-      setIsBusy(false);
+      setBusyAction(null);
     }
   }
 
@@ -154,30 +197,41 @@ export function ControlPlaneDashboard() {
             <p>Read-only diagnostics across enrolled agents.</p>
           </div>
           <div className="toolbar">
-            <button className="button secondary" type="button" onClick={refresh}>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={refresh}
+              disabled={busyAction !== null}
+            >
               <RefreshCcw size={16} />
-              Refresh
+              {busyAction === "refresh" ? "Refreshing" : "Refresh"}
             </button>
             <button
               className="button"
               type="button"
               onClick={runDiagnostic}
-              disabled={!selectedSession || isBusy}
+              disabled={!selectedSession || busyAction !== null}
             >
               <Activity size={16} />
-              Run Latency Diagnostic
+              {busyAction === "diagnostic" ? "Queueing" : "Run Latency Diagnostic"}
             </button>
             <button
               className="button"
               type="button"
               onClick={synthesize}
-              disabled={!selectedSession || isBusy}
+              disabled={!selectedSession || busyAction !== null}
             >
               <Sparkles size={16} />
-              Synthesize
+              {busyAction === "synthesis" ? "Synthesizing" : "Synthesize"}
             </button>
           </div>
         </div>
+
+        {(error || notice) && (
+          <div className={`banner ${error ? "error" : "info"}`} role="status">
+            {error || notice}
+          </div>
+        )}
 
         <div className="grid">
           <div className="stack">
@@ -188,9 +242,9 @@ export function ControlPlaneDashboard() {
             >
               <div className="metric-grid">
                 <Metric label="Agents" value={state.agents.length} />
+                <Metric label="Online" value={onlineAgents} />
                 <Metric label="Sessions" value={state.sessions.length} />
                 <Metric label="Queued Tasks" value={countTasks(state, "queued")} />
-                <Metric label="Events" value={state.events.length} />
               </div>
             </Panel>
 
@@ -210,11 +264,40 @@ export function ControlPlaneDashboard() {
                   className="button"
                   type="button"
                   onClick={createSession}
-                  disabled={isBusy || !selectedEnvironment}
+                  disabled={busyAction !== null || !selectedEnvironment}
                 >
-                  Start Session
+                  {busyAction === "session" ? "Starting" : "Start Session"}
                 </button>
               </div>
+            </Panel>
+
+            <Panel
+              icon={<Gauge size={17} />}
+              title="Session Health"
+              subtitle={selectedSession?.id ?? "No active session"}
+            >
+              {selectedSession ? (
+                <div className="session-health">
+                  <div className="health-row">
+                    <span>Progress</span>
+                    <strong>{completionPercent}%</strong>
+                  </div>
+                  <div className="progress-track" aria-label="Task completion">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${completionPercent}%` }}
+                    />
+                  </div>
+                  <div className="health-grid">
+                    <Metric label="Completed" value={taskSummary.completed} />
+                    <Metric label="Running" value={taskSummary.running} />
+                    <Metric label="Queued" value={taskSummary.queued} />
+                    <Metric label="Failed" value={taskSummary.failed} />
+                  </div>
+                </div>
+              ) : (
+                <div className="empty">Start a session to track diagnostic progress.</div>
+              )}
             </Panel>
 
             <Panel
@@ -244,7 +327,12 @@ export function ControlPlaneDashboard() {
                         <td>
                           <StatusPill value={agent.status} />
                         </td>
-                        <td>{agent.capabilities.length}</td>
+                        <td>
+                          <strong>{agent.capabilities.length}</strong>
+                          <div className="muted-line">
+                            {agent.capabilities.slice(0, 3).join(", ")}
+                          </div>
+                        </td>
                         <td>
                           {agent.tailscale.enabled
                             ? agent.tailscale.authKeyPreview ?? "enabled"
@@ -333,8 +421,13 @@ export function ControlPlaneDashboard() {
                 ) : (
                   selectedEvents.map((event) => (
                     <div className="event" key={event.id}>
-                      <strong>{event.message}</strong>
-                      <p className="mono">{event.taskId}</p>
+                      <div className="event-heading">
+                        <strong>{event.message}</strong>
+                        <StatusPill value={event.level} />
+                      </div>
+                      <p className="mono">
+                        {event.taskId} · {new Date(event.createdAt).toLocaleTimeString()}
+                      </p>
                     </div>
                   ))
                 )}
@@ -437,6 +530,15 @@ function StatusPill({ value }: { value: string }) {
   return <span className={`pill ${value}`}>{value}</span>;
 }
 
+function summarizeTasks(tasks: DiagnosticTask[]) {
+  return {
+    completed: tasks.filter((task) => task.status === "completed").length,
+    failed: tasks.filter((task) => task.status === "failed").length,
+    queued: tasks.filter((task) => task.status === "queued").length,
+    running: tasks.filter((task) => task.status === "running").length
+  };
+}
+
 function DiagnosticResult({ task }: { task: DiagnosticTask }) {
   return (
     <details className="result-item">
@@ -456,4 +558,8 @@ function formatResult(result: unknown) {
 
 function countTasks(state: ControlPlaneState, status: string) {
   return state.tasks.filter((task) => task.status === status).length;
+}
+
+function messageFrom(error: unknown) {
+  return error instanceof Error ? error.message : "Unexpected control plane error";
 }

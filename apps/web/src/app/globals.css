@@ -150,6 +150,27 @@ button {
   margin-bottom: 20px;
 }
 
+.banner {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.banner.info {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.banner.error {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
 .topbar h2 {
   margin: 0;
   font-size: 24px;
@@ -270,6 +291,43 @@ button {
   line-height: 1;
 }
 
+.session-health {
+  display: grid;
+  gap: 12px;
+}
+
+.health-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.health-row strong {
+  color: var(--text);
+}
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(90px, 1fr));
+  gap: 10px;
+}
+
+.progress-track {
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -301,6 +359,13 @@ button {
     "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
+.muted-line {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .pill {
   min-height: 24px;
   display: inline-flex;
@@ -324,6 +389,16 @@ button {
 .pill.running {
   color: var(--blue);
   background: var(--blue-soft);
+}
+
+.pill.info {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.pill.error {
+  color: var(--red);
+  background: var(--red-soft);
 }
 
 .pill.expired,
@@ -365,6 +440,13 @@ button {
   border-left: 3px solid var(--border);
   padding: 8px 10px;
   background: #fbfcf9;
+}
+
+.event-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .event strong {
@@ -440,7 +522,8 @@ button {
   }
 
   .grid,
-  .metric-grid {
+  .metric-grid,
+  .health-grid {
     grid-template-columns: 1fr;
   }
 
