@@ -172,6 +172,23 @@ ephemeral, non-reusable Tailscale auth key through the real OAuth API. The
 command does not print the auth key and is intentionally not part of
 `pnpm check`.
 
+The same live checks can run from GitHub Actions using the manual
+`Live Validations` workflow. Configure these repository secrets before running
+it:
+
+```text
+GEMINI_API_KEY
+PATCHBAY_OPERATOR_TOKEN
+PATCHBAY_ENROLLMENT_SECRET
+PATCHBAY_AGENT_AUTH_SECRET
+TAILSCALE_TAILNET
+TAILSCALE_OAUTH_CLIENT_ID
+TAILSCALE_OAUTH_CLIENT_SECRET
+```
+
+`GEMINI_MODEL` can be set as a repository variable; otherwise the workflow uses
+`gemini-2.5-flash`.
+
 ### Readiness Posture
 
 `/api/ready` returns service liveness plus structured readiness checks for

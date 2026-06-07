@@ -1,0 +1,111 @@
+name: Live Validations
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_gemini:
+        description: "Run live Gemini smoke validation"
+        required: true
+        default: true
+        type: boolean
+      run_tailscale:
+        description: "Run live Tailscale smoke validation"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  gemini:
+    if: ${{ inputs.run_gemini }}
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+      PATCHBAY_OPERATOR_TOKEN: ${{ secrets.PATCHBAY_OPERATOR_TOKEN }}
+      PATCHBAY_ENROLLMENT_SECRET: ${{ secrets.PATCHBAY_ENROLLMENT_SECRET }}
+      PATCHBAY_AGENT_AUTH_SECRET: ${{ secrets.PATCHBAY_AGENT_AUTH_SECRET }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in \
+            GEMINI_API_KEY \
+            PATCHBAY_OPERATOR_TOKEN \
+            PATCHBAY_ENROLLMENT_SECRET \
+            PATCHBAY_AGENT_AUTH_SECRET
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Run live Gemini smoke
+        run: pnpm test:gemini:live
+
+  tailscale:
+    if: ${{ inputs.run_tailscale }}
+    runs-on: ubuntu-latest
+    env:
+      TAILSCALE_TAILNET: ${{ secrets.TAILSCALE_TAILNET }}
+      TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+      TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+      PATCHBAY_OPERATOR_TOKEN: ${{ secrets.PATCHBAY_OPERATOR_TOKEN }}
+      PATCHBAY_ENROLLMENT_SECRET: ${{ secrets.PATCHBAY_ENROLLMENT_SECRET }}
+      PATCHBAY_AGENT_AUTH_SECRET: ${{ secrets.PATCHBAY_AGENT_AUTH_SECRET }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate required secrets
+        run: |
+          missing=0
+          for name in \
+            TAILSCALE_TAILNET \
+            TAILSCALE_OAUTH_CLIENT_ID \
+            TAILSCALE_OAUTH_CLIENT_SECRET \
+            PATCHBAY_OPERATOR_TOKEN \
+            PATCHBAY_ENROLLMENT_SECRET \
+            PATCHBAY_AGENT_AUTH_SECRET
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Run live Tailscale smoke
+        run: pnpm test:tailscale:live
