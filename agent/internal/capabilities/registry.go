@@ -23,11 +23,14 @@ type Registry struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		handlers: map[protocol.Capability]Handler{
-			protocol.CapabilitySystemInfo:         systemInfo,
-			protocol.CapabilityProcessList:        processList,
-			protocol.CapabilityDiskUsage:          diskUsage,
-			protocol.CapabilityNetworkConnections: networkConnections,
-			protocol.CapabilityLogsSearch:         logsSearch,
+			protocol.CapabilityWorkloadDiscover:    workloadDiscover,
+			protocol.CapabilitySystemInfo:          systemInfo,
+			protocol.CapabilityProcessList:         processList,
+			protocol.CapabilityDiskUsage:           diskUsage,
+			protocol.CapabilityNetworkConnections:  networkConnections,
+			protocol.CapabilityLogsSearch:          logsSearch,
+			protocol.CapabilityDockerContainers:    dockerContainers,
+			protocol.CapabilityKubernetesResources: kubernetesResources,
 		},
 	}
 }

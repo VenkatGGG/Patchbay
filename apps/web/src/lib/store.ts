@@ -184,11 +184,14 @@ class PatchbayStore {
     );
 
     const desired: Capability[] = [
+      "workload.discover",
       "system.info",
       "process.list",
       "disk.usage",
       "network.connections",
-      "logs.search"
+      "logs.search",
+      "docker.containers",
+      "kubernetes.resources"
     ];
 
     const tasks: DiagnosticTask[] = [];
@@ -336,6 +339,15 @@ const paramsFor = (capability: Capability): Record<string, unknown> => {
     case "network.connections":
       return {
         limit: 60
+      };
+    case "docker.containers":
+      return {
+        limit: 60
+      };
+    case "kubernetes.resources":
+      return {
+        namespaces: "all",
+        limit: 80
       };
     default:
       return {};

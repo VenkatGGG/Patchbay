@@ -3,11 +3,14 @@ package protocol
 type Capability string
 
 const (
-	CapabilitySystemInfo         Capability = "system.info"
-	CapabilityProcessList        Capability = "process.list"
-	CapabilityDiskUsage          Capability = "disk.usage"
-	CapabilityNetworkConnections Capability = "network.connections"
-	CapabilityLogsSearch         Capability = "logs.search"
+	CapabilityWorkloadDiscover    Capability = "workload.discover"
+	CapabilitySystemInfo          Capability = "system.info"
+	CapabilityProcessList         Capability = "process.list"
+	CapabilityDiskUsage           Capability = "disk.usage"
+	CapabilityNetworkConnections  Capability = "network.connections"
+	CapabilityLogsSearch          Capability = "logs.search"
+	CapabilityDockerContainers    Capability = "docker.containers"
+	CapabilityKubernetesResources Capability = "kubernetes.resources"
 )
 
 type TailscaleState struct {

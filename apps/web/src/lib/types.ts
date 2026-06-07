@@ -1,9 +1,12 @@
 export const READ_ONLY_CAPABILITIES = [
+  "workload.discover",
   "system.info",
   "process.list",
   "disk.usage",
   "network.connections",
-  "logs.search"
+  "logs.search",
+  "docker.containers",
+  "kubernetes.resources"
 ] as const;
 
 export type Capability = (typeof READ_ONLY_CAPABILITIES)[number];
@@ -104,4 +107,3 @@ export type ControlPlaneState = {
   syntheses: Synthesis[];
   audit: AuditEvent[];
 };
-
