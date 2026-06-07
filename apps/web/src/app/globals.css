@@ -333,6 +333,32 @@ button {
   gap: 12px;
 }
 
+.posture-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.posture-item {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcf9;
+}
+
+.posture-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.posture-item strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
 .health-row {
   display: flex;
   align-items: center;
@@ -417,7 +443,8 @@ button {
 
 .pill.online,
 .pill.active,
-.pill.completed {
+.pill.completed,
+.pill.ready {
   color: var(--green);
   background: var(--green-soft);
 }
@@ -445,7 +472,8 @@ button {
 }
 
 .pill.warning,
-.pill.idle {
+.pill.idle,
+.pill.local {
   color: var(--amber);
   background: var(--amber-soft);
 }
@@ -560,7 +588,8 @@ button {
 
   .grid,
   .metric-grid,
-  .health-grid {
+  .health-grid,
+  .posture-grid {
     grid-template-columns: 1fr;
   }
 

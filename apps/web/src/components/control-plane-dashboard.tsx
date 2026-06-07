@@ -10,6 +10,7 @@ import {
   Network,
   RefreshCcw,
   ShieldCheck,
+  ShieldAlert,
   Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -25,8 +26,38 @@ const emptyState: ControlPlaneState = {
   audit: []
 };
 
+type RuntimeStatus = {
+  status: string;
+  timestamp: string;
+  agentAuth: {
+    required: boolean;
+    secretConfigured: boolean;
+  };
+  operatorAuth: {
+    required: boolean;
+  };
+  runtime: {
+    storage: string;
+    postgresConfigured: boolean;
+  };
+  counts: {
+    environments: number;
+    agents: number;
+    sessions: number;
+    tasks: number;
+    auditEvents: number;
+  };
+  llmProviders: Array<{
+    id: string;
+    displayName: string;
+    configured: boolean;
+    selected: boolean;
+  }>;
+};
+
 export function ControlPlaneDashboard() {
   const [state, setState] = useState<ControlPlaneState>(emptyState);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [sessionName, setSessionName] = useState("checkout latency investigation");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [busyAction, setBusyAction] = useState<
@@ -34,6 +65,7 @@ export function ControlPlaneDashboard() {
   >(null);
   const [operatorToken, setOperatorToken] = useState("");
   const [pendingOperatorToken, setPendingOperatorToken] = useState("");
+  const [operatorTokenLoaded, setOperatorTokenLoaded] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [notice, setNotice] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -90,9 +122,16 @@ export function ControlPlaneDashboard() {
     return response;
   }
 
-  async function refresh() {
-    setBusyAction("refresh");
+  async function refresh(showBusy = false) {
+    if (showBusy) {
+      setBusyAction("refresh");
+    }
     try {
+      const readyResponse = await fetch("/api/ready", { cache: "no-store" });
+      if (readyResponse.ok) {
+        setRuntimeStatus(await readyResponse.json());
+      }
+
       const response = await fetchControlPlane("/api/state", { cache: "no-store" });
       if (!response.ok) {
         throw new Error(`State refresh failed with ${response.status}`);
@@ -103,7 +142,9 @@ export function ControlPlaneDashboard() {
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
-      setBusyAction(null);
+      if (showBusy) {
+        setBusyAction(null);
+      }
     }
   }
 
@@ -231,13 +272,18 @@ export function ControlPlaneDashboard() {
     const savedToken = window.localStorage.getItem("patchbay.operatorToken") ?? "";
     setOperatorToken(savedToken);
     setPendingOperatorToken(savedToken);
+    setOperatorTokenLoaded(true);
   }, []);
 
   useEffect(() => {
+    if (!operatorTokenLoaded) {
+      return;
+    }
+
     void refresh();
     const timer = window.setInterval(() => void refresh(), 4000);
     return () => window.clearInterval(timer);
-  }, [operatorToken]);
+  }, [operatorToken, operatorTokenLoaded]);
 
   return (
     <main className="shell">
@@ -280,7 +326,7 @@ export function ControlPlaneDashboard() {
             <button
               className="button secondary"
               type="button"
-              onClick={refresh}
+              onClick={() => refresh(true)}
               disabled={busyAction !== null}
             >
               <RefreshCcw size={16} />
@@ -363,6 +409,14 @@ export function ControlPlaneDashboard() {
                 <Metric label="Sessions" value={state.sessions.length} />
                 <Metric label="Queued Tasks" value={countTasks(state, "queued")} />
               </div>
+            </Panel>
+
+            <Panel
+              icon={<ShieldAlert size={17} />}
+              title="Runtime Posture"
+              subtitle={runtimeStatus?.status ?? "Checking readiness"}
+            >
+              <RuntimePosture runtimeStatus={runtimeStatus} />
             </Panel>
 
             <Panel
@@ -603,6 +657,58 @@ function SidebarStats({ state }: { state: ControlPlaneState }) {
           <strong>{state.audit.length}</strong>
         </div>
       </div>
+    </div>
+  );
+}
+
+function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null }) {
+  const selectedProvider = runtimeStatus?.llmProviders.find(
+    (provider) => provider.selected
+  );
+  const postureItems = [
+    {
+      label: "Storage",
+      value: runtimeStatus?.runtime.storage ?? "unknown",
+      status: runtimeStatus?.runtime.storage === "postgres" ? "ready" : "local"
+    },
+    {
+      label: "Operator Auth",
+      value: runtimeStatus?.operatorAuth.required ? "required" : "local open",
+      status: runtimeStatus?.operatorAuth.required ? "ready" : "warning"
+    },
+    {
+      label: "Agent Auth",
+      value: runtimeStatus?.agentAuth.required ? "required" : "local open",
+      status: runtimeStatus?.agentAuth.required ? "ready" : "warning"
+    },
+    {
+      label: "Agent Secret",
+      value: runtimeStatus?.agentAuth.secretConfigured ? "configured" : "fallback",
+      status: runtimeStatus?.agentAuth.secretConfigured ? "ready" : "warning"
+    },
+    {
+      label: "LLM",
+      value: selectedProvider?.displayName ?? "unknown",
+      status: selectedProvider?.configured ? "ready" : "warning"
+    },
+    {
+      label: "Last Check",
+      value: runtimeStatus
+        ? new Date(runtimeStatus.timestamp).toLocaleTimeString()
+        : "pending",
+      status: runtimeStatus?.status === "ready" ? "ready" : "warning"
+    }
+  ];
+
+  return (
+    <div className="posture-grid">
+      {postureItems.map((item) => (
+        <div className="posture-item" key={item.label}>
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+          <StatusPill value={item.status} />
+        </div>
+      ))}
     </div>
   );
 }

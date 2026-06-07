@@ -54,6 +54,13 @@ async function main() {
     ready.agentAuth.required === true,
     "expected readiness endpoint to report agent auth enabled"
   );
+  const geminiProvider = ready.llmProviders.find((provider) => provider.id === "gemini");
+  assert(geminiProvider, "expected Gemini provider in readiness payload");
+  assert(geminiProvider.selected === true, "expected Gemini provider to be selected");
+  assert(
+    geminiProvider.configured === false,
+    "expected Gemini provider to be unconfigured without GEMINI_API_KEY"
+  );
 
   await expectStatus(
     "unauthenticated state is rejected",
