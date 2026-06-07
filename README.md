@@ -162,7 +162,10 @@ require them:
 ```bash
 PATCHBAY_REQUIRE_AGENT_TOKEN=true
 PATCHBAY_AGENT_AUTH_SECRET=<strong-random-secret>
+PATCHBAY_AGENT_TOKEN_TTL_MINUTES=1440
 ```
+
+The TTL defaults to 24 hours and is capped at 7 days.
 
 ### Optional Tailscale Bootstrap
 

@@ -5,6 +5,7 @@ type AgentTokenPayload = {
   agentId: string;
   environmentId: string;
   issuedAt: string;
+  expiresAt: string;
 };
 
 type AgentAuthResult =
@@ -12,14 +13,22 @@ type AgentAuthResult =
   | { ok: false; reason: string };
 
 export function createAgentToken(agentId: string, environmentId: string) {
+  const issuedAt = new Date();
   const payload: AgentTokenPayload = {
     purpose: "agent_api",
     agentId,
     environmentId,
-    issuedAt: new Date().toISOString()
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: new Date(
+      issuedAt.getTime() + agentTokenTtlMinutes() * 60_000
+    ).toISOString()
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${body}.${sign(body)}`;
+}
+
+export function agentTokenExpiresAt() {
+  return new Date(Date.now() + agentTokenTtlMinutes() * 60_000).toISOString();
 }
 
 export function verifyAgentAuthorization(
@@ -40,6 +49,11 @@ export function verifyAgentAuthorization(
     return { ok: false, reason: "Agent token rejected" };
   }
 
+  const expiresAtMs = Date.parse(payload.expiresAt);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    return { ok: false, reason: "Agent token expired" };
+  }
+
   if (expectedAgentId && payload.agentId !== expectedAgentId) {
     return { ok: false, reason: "Agent token does not match agent" };
   }
@@ -54,7 +68,8 @@ export function verifyAgentAuthorization(
 export function agentAuthStatus() {
   return {
     required: agentTokenRequired(),
-    secretConfigured: Boolean(process.env.PATCHBAY_AGENT_AUTH_SECRET)
+    secretConfigured: Boolean(process.env.PATCHBAY_AGENT_AUTH_SECRET),
+    tokenTtlMinutes: agentTokenTtlMinutes()
   };
 }
 
@@ -68,7 +83,11 @@ function verifyAgentToken(token: string) {
     const payload = JSON.parse(
       Buffer.from(body, "base64url").toString("utf8")
     ) as AgentTokenPayload;
-    if (payload.purpose !== "agent_api" || !payload.agentId) {
+    if (
+      payload.purpose !== "agent_api" ||
+      !payload.agentId ||
+      !payload.expiresAt
+    ) {
       return undefined;
     }
     return payload;
@@ -79,6 +98,14 @@ function verifyAgentToken(token: string) {
 
 function agentTokenRequired() {
   return process.env.PATCHBAY_REQUIRE_AGENT_TOKEN === "true";
+}
+
+function agentTokenTtlMinutes() {
+  const value = Number(process.env.PATCHBAY_AGENT_TOKEN_TTL_MINUTES ?? 24 * 60);
+  if (!Number.isInteger(value) || value <= 0) {
+    return 24 * 60;
+  }
+  return Math.min(value, 7 * 24 * 60);
 }
 
 function bearerToken(header: string | null) {

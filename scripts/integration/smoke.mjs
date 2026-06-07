@@ -29,6 +29,7 @@ async function main() {
       GEMINI_API_KEY: "",
       PATCHBAY_REQUIRE_AGENT_TOKEN: "true",
       PATCHBAY_AGENT_AUTH_SECRET: "integration-agent-auth-secret",
+      PATCHBAY_AGENT_TOKEN_TTL_MINUTES: "30",
       PATCHBAY_LLM_PROVIDER: "gemini",
       PATCHBAY_OPERATOR_TOKEN: operatorToken
     }
@@ -53,6 +54,10 @@ async function main() {
   assert(
     ready.agentAuth.required === true,
     "expected readiness endpoint to report agent auth enabled"
+  );
+  assert(
+    ready.agentAuth.tokenTtlMinutes === 30,
+    `expected agent token ttl 30, got ${ready.agentAuth.tokenTtlMinutes}`
   );
   const geminiProvider = ready.llmProviders.find((provider) => provider.id === "gemini");
   assert(geminiProvider, "expected Gemini provider in readiness payload");
@@ -165,6 +170,10 @@ async function main() {
   );
   assert(secondAgentResponse.status === 201, "expected secondary agent enrollment");
   assert(secondAgentResponse.body.agentToken, "expected secondary agent token");
+  assert(
+    secondAgentResponse.body.agentTokenExpiresAt,
+    "expected secondary agent token expiry"
+  );
 
   await expectStatus(
     "agent cannot update another agent task",

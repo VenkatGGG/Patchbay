@@ -32,6 +32,7 @@ type RuntimeStatus = {
   agentAuth: {
     required: boolean;
     secretConfigured: boolean;
+    tokenTtlMinutes: number;
   };
   operatorAuth: {
     required: boolean;
@@ -685,6 +686,13 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
       label: "Agent Secret",
       value: runtimeStatus?.agentAuth.secretConfigured ? "configured" : "fallback",
       status: runtimeStatus?.agentAuth.secretConfigured ? "ready" : "warning"
+    },
+    {
+      label: "Agent TTL",
+      value: runtimeStatus
+        ? `${runtimeStatus.agentAuth.tokenTtlMinutes}m`
+        : "unknown",
+      status: runtimeStatus?.agentAuth.required ? "ready" : "warning"
     },
     {
       label: "LLM",
