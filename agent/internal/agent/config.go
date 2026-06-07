@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -21,8 +22,15 @@ type Config struct {
 func ConfigFromEnv() (Config, error) {
 	hostname, _ := os.Hostname()
 
+	controlPlaneURL, err := normalizeControlPlaneURL(
+		getenv("PATCHBAY_CONTROL_PLANE_URL", "http://localhost:3000"),
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
 	config := Config{
-		ControlPlaneURL: strings.TrimRight(getenv("PATCHBAY_CONTROL_PLANE_URL", "http://localhost:3000"), "/"),
+		ControlPlaneURL: controlPlaneURL,
 		EnvironmentID:   getenv("PATCHBAY_ENVIRONMENT_ID", "env_local"),
 		Name:            getenv("PATCHBAY_AGENT_NAME", hostname),
 		EnrollmentToken: getenv("PATCHBAY_ENROLLMENT_TOKEN", ""),
@@ -43,6 +51,21 @@ func ConfigFromEnv() (Config, error) {
 	config.PollInterval = interval
 
 	return config, nil
+}
+
+func normalizeControlPlaneURL(rawURL string) (string, error) {
+	value := strings.TrimRight(strings.TrimSpace(rawURL), "/")
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("parse PATCHBAY_CONTROL_PLANE_URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("PATCHBAY_CONTROL_PLANE_URL must use http or https")
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("PATCHBAY_CONTROL_PLANE_URL must include a host")
+	}
+	return value, nil
 }
 
 func getenv(key string, fallback string) string {
