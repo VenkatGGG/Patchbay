@@ -130,6 +130,20 @@ async function main() {
   );
 
   await expectStatus(
+    "operator token header authenticates state",
+    getResponse("/api/state", operatorTokenHeader()),
+    200
+  );
+
+  await expectStatus(
+    "malformed operator token header is rejected",
+    getResponse("/api/state", {
+      "x-patchbay-operator-token": `${operatorToken} trailing`
+    }),
+    401
+  );
+
+  await expectStatus(
     "operator bearer token with trailing words is rejected",
     getResponse("/api/state", {
       Authorization: `Bearer ${operatorToken} trailing`
@@ -1119,6 +1133,12 @@ async function getTextResponse(path, headers = {}) {
 function operatorHeaders() {
   return {
     Authorization: `Bearer ${operatorToken}`
+  };
+}
+
+function operatorTokenHeader() {
+  return {
+    "x-patchbay-operator-token": operatorToken
   };
 }
 
