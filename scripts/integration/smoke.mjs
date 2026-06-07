@@ -338,6 +338,23 @@ async function main() {
     401
   );
 
+  await expectStatus(
+    "enrollment bearer token with trailing words is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-trailing-enrollment-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      {
+        Authorization: `Bearer ${tokenResponse.body.token} trailing`
+      }
+    ),
+    401
+  );
+
   const redactionAgentResponse = await postJson(
     "/api/agent/enroll",
     {

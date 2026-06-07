@@ -87,7 +87,7 @@ export function enrollmentAuthStatus() {
 }
 
 export function enrollmentTokenFromAuthorization(header: string | null) {
-  const match = header?.match(/^Bearer\s+(.+)$/i);
+  const match = header?.match(/^Bearer\s+([^\s]+)$/i);
   return match?.[1];
 }
 
