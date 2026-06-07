@@ -32,6 +32,16 @@ async function main() {
 
   await waitForJson("/api/state");
 
+  const health = await getJson("/api/health");
+  assert(health.status === "ok", "expected health endpoint to report ok");
+
+  const ready = await getJson("/api/ready");
+  assert(ready.status === "ready", "expected readiness endpoint to report ready");
+  assert(
+    ready.runtime.storage === storageMode,
+    `expected readiness storage ${storageMode}, got ${ready.runtime.storage}`
+  );
+
   await expectStatus(
     "unauthenticated enrollment is rejected",
     postJson("/api/agent/enroll", {
@@ -101,6 +111,25 @@ async function main() {
     "expected synthesis summary to reference the session"
   );
 
+  const reportResponse = await getTextResponse(`/api/sessions/${sessionId}/report`);
+  assert(reportResponse.status === 200, "expected report export to return 200");
+  assert(
+    reportResponse.headers.get("content-type")?.includes("text/markdown"),
+    "expected report export to return markdown"
+  );
+  assert(
+    reportResponse.body.includes("integration latency session"),
+    "expected report to include the session name"
+  );
+  assert(
+    reportResponse.body.includes("workload.discover"),
+    "expected report to include diagnostic task coverage"
+  );
+  assert(
+    reportResponse.body.includes("gemini:offline"),
+    "expected report to include the offline Gemini synthesis provider"
+  );
+
   const providerResponse = await getResponse("/api/llm/providers");
   assert(providerResponse.status === 200, "expected provider registry endpoint to return 200");
   assert(
@@ -118,7 +147,8 @@ async function main() {
         agents: finalState.agents.length,
         tasks: finalTasks.length,
         completed: finalTasks.filter((task) => task.status === "completed").length,
-        syntheses: finalState.syntheses.length
+        syntheses: finalState.syntheses.length,
+        reportBytes: reportResponse.body.length
       },
       null,
       2
@@ -216,6 +246,19 @@ async function getResponse(path) {
   return {
     status: response.status,
     body: await response.json()
+  };
+}
+
+async function getTextResponse(path) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: {
+      accept: "text/markdown"
+    }
+  });
+  return {
+    status: response.status,
+    headers: response.headers,
+    body: await response.text()
   };
 }
 

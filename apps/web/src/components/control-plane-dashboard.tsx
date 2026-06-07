@@ -4,6 +4,7 @@ import {
   Activity,
   Boxes,
   Cable,
+  FileDown,
   FileText,
   Gauge,
   Network,
@@ -153,6 +154,18 @@ export function ControlPlaneDashboard() {
     }
   }
 
+  function exportReport() {
+    if (!selectedSession) return;
+
+    window.open(
+      `/api/sessions/${selectedSession.id}/report`,
+      "_blank",
+      "noopener,noreferrer"
+    );
+    setNotice(`Opened report for ${selectedSession.name}`);
+    setError("");
+  }
+
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 4000);
@@ -223,6 +236,15 @@ export function ControlPlaneDashboard() {
             >
               <Sparkles size={16} />
               {busyAction === "synthesis" ? "Synthesizing" : "Synthesize"}
+            </button>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={exportReport}
+              disabled={!selectedSession || busyAction !== null}
+            >
+              <FileDown size={16} />
+              Export Report
             </button>
           </div>
         </div>

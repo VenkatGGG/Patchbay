@@ -868,6 +868,11 @@ const optionalIsoValue = (value: unknown) =>
 const shouldUsePostgres = () =>
   process.env.PATCHBAY_STORAGE === "postgres" && Boolean(process.env.DATABASE_URL);
 
+export const getStoreRuntime = () => ({
+  storage: shouldUsePostgres() ? "postgres" : "memory",
+  postgresConfigured: Boolean(process.env.DATABASE_URL)
+});
+
 const createStore = (): PatchbayStore => {
   if (!shouldUsePostgres()) {
     return new MemoryStore();
@@ -885,4 +890,3 @@ const createStore = (): PatchbayStore => {
 
 export const store = globalForStore.patchbayStore ?? createStore();
 globalForStore.patchbayStore = store;
-
