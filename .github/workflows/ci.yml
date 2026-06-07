@@ -72,3 +72,6 @@ jobs:
 
       - name: Validate compose file
         run: docker compose config --quiet --no-env-resolution
+
+      - name: Build production web image
+        run: docker build -f Dockerfile.web -t patchbay-web:ci .

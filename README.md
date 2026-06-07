@@ -138,6 +138,7 @@ pnpm check
 - Env template completeness check.
 - Local env envelope generation and backfill check.
 - Compose security check.
+- Docker build contract check.
 - Postgres schema constraint static check.
 - Next.js typecheck.
 - Next.js production build.
@@ -155,6 +156,10 @@ pnpm check
   shape, and redacted evidence without calling the real Gemini API.
 - Fake Tailscale OAuth/key-minting smoke test that verifies tagged, ephemeral,
   non-reusable auth key requests without calling the real Tailscale API.
+
+GitHub Actions also builds the production web Docker image from `Dockerfile.web`
+after the Postgres smoke tests pass. This catches self-hosted packaging failures
+without requiring a local Docker daemon for `pnpm check`.
 
 Run the same end-to-end test against Postgres:
 
