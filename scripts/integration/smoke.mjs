@@ -511,6 +511,42 @@ async function main() {
   );
   assert(redactionTask?.id, "expected redaction agent diagnostic task");
 
+  const claimedRedactionTasks = await getResponse(
+    `/api/agent/tasks?agentId=${redactionAgentResponse.body.agent.id}`,
+    {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }
+  );
+  assert(claimedRedactionTasks.status === 200, "expected redaction agent task claim");
+  assert(
+    claimedRedactionTasks.body.length === 1,
+    `expected one claimed redaction task, got ${claimedRedactionTasks.body.length}`
+  );
+  assert(
+    claimedRedactionTasks.body[0].id === redactionTask.id,
+    "expected claimed redaction task id"
+  );
+  assert(
+    claimedRedactionTasks.body[0].status === "running",
+    "expected task claim to mark task running"
+  );
+  assert(
+    claimedRedactionTasks.body[0].startedAt,
+    "expected task claim to record start time"
+  );
+
+  const repeatedRedactionClaim = await getResponse(
+    `/api/agent/tasks?agentId=${redactionAgentResponse.body.agent.id}`,
+    {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }
+  );
+  assert(repeatedRedactionClaim.status === 200, "expected repeated task claim");
+  assert(
+    repeatedRedactionClaim.body.length === 0,
+    "expected repeated claim to return no duplicate tasks"
+  );
+
   await expectStatus(
     "agent cannot requeue an assigned task",
     postJson(

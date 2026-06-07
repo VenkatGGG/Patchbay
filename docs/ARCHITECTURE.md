@@ -64,11 +64,12 @@ task polling and event ingestion. `PATCHBAY_REQUIRE_AGENT_TOKEN=true` enforces
 this post-enrollment token path; local development can leave it disabled. Agents
 refresh their signed API token through an authenticated agent endpoint before
 expiry. Task event ingestion also verifies the authenticated agent owns the task
-before accepting status or result updates. Agent event ingestion rejects
-requeue attempts and terminal task rewrites so completed, failed, or denied
-results remain auditable. Closed or expired sessions reject late task events so
-session-scoped authority ends at the control plane boundary, not just in the
-dashboard.
+before accepting status or result updates. Task polling atomically claims queued
+work by moving it to `running`, which prevents repeated polls from dispatching
+the same task twice. Agent event ingestion rejects requeue attempts and terminal
+task rewrites so completed, failed, or denied results remain auditable. Closed
+or expired sessions reject late task events so session-scoped authority ends at
+the control plane boundary, not just in the dashboard.
 
 ## Agent
 

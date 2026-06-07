@@ -277,7 +277,8 @@ class MemoryStore implements PatchbayStore {
       lastSeenAt: heartbeatAt
     });
 
-    return [...this.tasks.values()].filter((task) => {
+    const claimedAt = now();
+    const claimedTasks = [...this.tasks.values()].filter((task) => {
       const session = this.sessions.get(task.sessionId);
       return (
         task.agentId === agentId &&
@@ -285,6 +286,20 @@ class MemoryStore implements PatchbayStore {
         session?.status === "active"
       );
     });
+
+    for (const task of claimedTasks) {
+      this.tasks.set(task.id, {
+        ...task,
+        status: "running",
+        startedAt: task.startedAt ?? claimedAt
+      });
+    }
+
+    return claimedTasks.map((task) => ({
+      ...task,
+      status: "running",
+      startedAt: task.startedAt ?? claimedAt
+    }));
   }
 
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
@@ -626,18 +641,23 @@ class PostgresStore implements PatchbayStore {
 
     const result = await this.pool.query(
       `
-        SELECT task.*
-        FROM session_tasks task
-        JOIN sessions session ON session.id = task.session_id
-        WHERE task.agent_id = $1
+        UPDATE session_tasks task
+        SET
+          status = 'running',
+          started_at = COALESCE(task.started_at, now())
+        FROM sessions session
+        WHERE session.id = task.session_id
+          AND task.agent_id = $1
           AND task.status = 'queued'
           AND session.status = 'active'
-        ORDER BY task.created_at ASC
+        RETURNING task.*
       `,
       [agentId]
     );
 
-    return result.rows.map(toTask);
+    return result.rows
+      .map(toTask)
+      .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
   }
 
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
