@@ -305,6 +305,20 @@ async function main() {
     401
   );
 
+  await expectStatus(
+    "extra-segment enrollment token is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-extra-segment-enrollment-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(`${tokenResponse.body.token}.ignored`)
+    ),
+    401
+  );
 
   const redactionAgentResponse = await postJson(
     "/api/agent/enroll",
@@ -585,6 +599,30 @@ async function main() {
   assert(
     secondAgentResponse.body.agentTokenExpiresAt,
     "expected secondary agent token expiry"
+  );
+
+  await expectStatus(
+    "extra-segment agent token refresh is rejected",
+    postJson(
+      "/api/agent/token",
+      {},
+      {
+        Authorization: `Bearer ${secondAgentResponse.body.agentToken}.ignored`
+      }
+    ),
+    401
+  );
+
+  await expectStatus(
+    "agent bearer token with trailing words is rejected",
+    postJson(
+      "/api/agent/token",
+      {},
+      {
+        Authorization: `Bearer ${secondAgentResponse.body.agentToken} trailing`
+      }
+    ),
+    401
   );
 
   const refreshedAgentResponse = await postJson(

@@ -80,7 +80,11 @@ export function agentAuthStatus() {
 }
 
 function verifyAgentToken(token: string) {
-  const [body, signature] = token.split(".", 2);
+  const parts = token.split(".");
+  if (parts.length !== 2) {
+    return undefined;
+  }
+  const [body, signature] = parts;
   if (!body || !signature || !safeEqual(signature, sign(body))) {
     return undefined;
   }
@@ -119,8 +123,8 @@ function bearerToken(header: string | null) {
     return undefined;
   }
 
-  const [scheme, token] = header.split(/\s+/, 2);
-  return scheme?.toLowerCase() === "bearer" ? token?.trim() : undefined;
+  const match = header.match(/^Bearer\s+([^\s]+)$/i);
+  return match?.[1];
 }
 
 function sign(body: string) {

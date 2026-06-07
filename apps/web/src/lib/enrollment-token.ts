@@ -35,7 +35,11 @@ export function verifyEnrollmentToken(
     return { ok: false, reason: "Enrollment token is required" };
   }
 
-  const [body, signature] = token.split(".");
+  const parts = token.split(".");
+  if (parts.length !== 2) {
+    return { ok: false, reason: "Enrollment token is malformed" };
+  }
+  const [body, signature] = parts;
   if (!body || !signature) {
     return { ok: false, reason: "Enrollment token is malformed" };
   }

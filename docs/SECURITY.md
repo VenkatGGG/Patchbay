@@ -41,6 +41,8 @@ Control plane:
   uploads.
 - Signed agent tokens carry an expiry; the default TTL is 24 hours and the
   configured maximum is capped at 7 days.
+- Signed enrollment and agent tokens must be exactly two-segment HMAC envelopes;
+  appended token segments and extra bearer header words are rejected.
 - Agents can refresh signed API tokens before expiry, but expired tokens are
   rejected and require re-enrollment.
 - Task event ingestion verifies the signed agent identity is assigned to the
