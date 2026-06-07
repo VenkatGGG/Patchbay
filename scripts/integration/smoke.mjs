@@ -196,6 +196,16 @@ async function main() {
     400
   );
 
+  await expectStatus(
+    "unknown environment token minting is rejected",
+    postJson(
+      "/api/environments/env_missing/enrollment-token",
+      { ttlMinutes: 15 },
+      operatorHeaders()
+    ),
+    404
+  );
+
   const tokenResponse = await postJson(
     "/api/environments/env_local/enrollment-token",
     {

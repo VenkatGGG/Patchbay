@@ -500,6 +500,50 @@ button {
   gap: 8px;
 }
 
+.enrollment-control {
+  display: grid;
+  gap: 10px;
+}
+
+.enrollment-command {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcf9;
+}
+
+.command-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.command-block {
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.enrollment-command p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .input {
   min-height: 38px;
   width: 100%;

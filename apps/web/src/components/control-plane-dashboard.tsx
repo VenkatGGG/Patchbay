@@ -71,6 +71,12 @@ type RuntimeStatus = {
   }>;
 };
 
+type EnrollmentTokenState = {
+  token: string;
+  environmentId: string;
+  expiresAt: string;
+};
+
 export function ControlPlaneDashboard({
   initialOperatorAuthRequired = false
 }: {
@@ -79,9 +85,20 @@ export function ControlPlaneDashboard({
   const [state, setState] = useState<ControlPlaneState>(emptyState);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [sessionName, setSessionName] = useState("checkout latency investigation");
+  const [enrollmentTtlMinutes, setEnrollmentTtlMinutes] = useState("60");
+  const [enrollmentToken, setEnrollmentToken] = useState<EnrollmentTokenState | null>(
+    null
+  );
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [busyAction, setBusyAction] = useState<
-    "refresh" | "session" | "diagnostic" | "synthesis" | "report" | "close" | null
+    | "refresh"
+    | "session"
+    | "enrollment"
+    | "diagnostic"
+    | "synthesis"
+    | "report"
+    | "close"
+    | null
   >(null);
   const [operatorToken, setOperatorToken] = useState("");
   const [pendingOperatorToken, setPendingOperatorToken] = useState("");
@@ -191,6 +208,33 @@ export function ControlPlaneDashboard({
       setNotice(`Started ${session.name}`);
       setError("");
       await refresh();
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function mintEnrollmentToken() {
+    if (!selectedEnvironment) return;
+    setBusyAction("enrollment");
+    try {
+      const ttlMinutes = Number(enrollmentTtlMinutes);
+      const response = await fetchControlPlane(
+        `/api/environments/${selectedEnvironment.id}/enrollment-token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ttlMinutes })
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Enrollment token mint failed with ${response.status}`);
+      }
+      const token = (await response.json()) as EnrollmentTokenState;
+      setEnrollmentToken(token);
+      setNotice(`Minted enrollment token for ${selectedEnvironment.name}`);
+      setError("");
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -506,6 +550,54 @@ export function ControlPlaneDashboard({
               subtitle={runtimeStatus?.posture.level ?? "pending"}
             >
               <ReadinessChecks checks={runtimeStatus?.posture.checks ?? []} />
+            </Panel>
+
+            <Panel
+              icon={<KeyRound size={17} />}
+              title="Agent Enrollment"
+              subtitle={selectedEnvironment?.id ?? "No environment selected"}
+            >
+              <div className="enrollment-control">
+                <div className="form-row">
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={enrollmentTtlMinutes}
+                    onChange={(event) => setEnrollmentTtlMinutes(event.target.value)}
+                    aria-label="Enrollment token TTL minutes"
+                  />
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={mintEnrollmentToken}
+                    disabled={
+                      busyAction !== null ||
+                      !selectedEnvironment ||
+                      !isValidTtl(enrollmentTtlMinutes)
+                    }
+                  >
+                    {busyAction === "enrollment" ? "Minting" : "Mint Token"}
+                  </button>
+                </div>
+                <div className="enrollment-command">
+                  <div className="command-heading">
+                    <span>Agent command</span>
+                    {enrollmentToken ? (
+                      <StatusPill value="ready" />
+                    ) : (
+                      <StatusPill value="local" />
+                    )}
+                  </div>
+                  <pre className="command-block">{agentRunCommand(enrollmentToken?.token)}</pre>
+                  {enrollmentToken && (
+                    <p>
+                      Expires {new Date(enrollmentToken.expiresAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              </div>
             </Panel>
 
             <Panel
@@ -910,6 +1002,15 @@ function formatResult(result: unknown) {
 
 function countTasks(state: ControlPlaneState, status: string) {
   return state.tasks.filter((task) => task.status === status).length;
+}
+
+function isValidTtl(value: string) {
+  const ttlMinutes = Number(value);
+  return Number.isInteger(ttlMinutes) && ttlMinutes > 0 && ttlMinutes <= 1440;
+}
+
+function agentRunCommand(token?: string) {
+  return `PATCHBAY_ENROLLMENT_TOKEN=${token ?? "<minted-token>"} pnpm agent:run`;
 }
 
 function messageFrom(error: unknown) {

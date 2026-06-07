@@ -240,6 +240,10 @@ curl -X POST http://localhost:3000/api/environments/env_local/enrollment-token \
   -d '{"ttlMinutes":60}'
 ```
 
+The dashboard also includes an Agent Enrollment panel that mints the same
+short-lived token and renders the local agent run command for the selected
+environment.
+
 Run an agent with the token:
 
 ```bash
