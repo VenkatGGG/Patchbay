@@ -78,6 +78,7 @@ Minimum requirements:
 - Redact common token patterns before evidence leaves the agent.
 - Redact common token patterns again before LLM synthesis, report export, and
   dashboard diagnostic rendering.
+- Treat env-style, YAML/JSON-style, and camelCase secret key forms as sensitive.
 - Never send raw secrets to Gemini.
 - Keep `GEMINI_API_KEY`, `PATCHBAY_OPERATOR_TOKEN`, and
   `PATCHBAY_AGENT_AUTH_SECRET` in ignored local or deployment secret stores.

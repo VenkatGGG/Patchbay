@@ -681,6 +681,10 @@ async function main() {
     "=ghp_should_not_leak DATABASE_" +
     "URL" +
     "=postgres://user:pass@localhost:5432/app";
+  const syntheticColonSecret =
+    "KUBERNETES_SERVICE_ACCOUNT_" + "TO" + "KEN : eyJ_should_not_leak";
+  const syntheticJsonSecret =
+    '{"client' + 'Secret":"client_secret_should_not_leak","safe":"value"}';
   const syntheticBearerToken = "Bearer " + "abc.def.ghi";
   const syntheticPrivateKey =
     "-----BEGIN PRIVATE " + "KEY-----\nabc123\n-----END PRIVATE " + "KEY-----";
@@ -694,8 +698,12 @@ async function main() {
       status: "completed",
       result: {
         env: syntheticEnvSecret,
+        configDump: syntheticColonSecret,
+        jsonDump: syntheticJsonSecret,
         nested: {
           password: "supersecret",
+          apiKey: "api_key_should_not_leak",
+          clientSecret: "client_secret_object_should_not_leak",
           authorization: syntheticBearerToken,
           privateKey: syntheticPrivateKey
         }
@@ -880,6 +888,22 @@ async function main() {
   assert(
     !reportResponse.body.includes("supersecret"),
     "expected report to redact sensitive object keys"
+  );
+  assert(
+    !reportResponse.body.includes("eyJ_should_not_leak"),
+    "expected report to redact colon-delimited token assignments"
+  );
+  assert(
+    !reportResponse.body.includes("client_secret_should_not_leak"),
+    "expected report to redact JSON-style client secrets"
+  );
+  assert(
+    !reportResponse.body.includes("api_key_should_not_leak"),
+    "expected report to redact camelCase apiKey object values"
+  );
+  assert(
+    !reportResponse.body.includes("client_secret_object_should_not_leak"),
+    "expected report to redact camelCase clientSecret object values"
   );
   assert(
     !reportResponse.body.includes("abc.def.ghi"),

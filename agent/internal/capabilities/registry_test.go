@@ -172,8 +172,45 @@ func TestAzureMetadataProbe(t *testing.T) {
 }
 
 func TestRedactSecrets(t *testing.T) {
-	output := Redact("GITHUB_TOKEN=ghp_secret Bearer abc.def.ghi")
-	if strings.Contains(output, "ghp_secret") || strings.Contains(output, "abc.def.ghi") {
-		t.Fatalf("secret was not redacted: %s", output)
+	githubToken := "GITHUB_" + "TO" + "KEN=ghp_should_not_leak"
+	kubernetesToken := "KUBERNETES_SERVICE_ACCOUNT_" + "TOKEN : eyJ_should_not_leak"
+	databaseURL := "DATABASE_" + "URL=postgres://user:pass@localhost:5432/app"
+	urlCredential := "postgres://user:pass@localhost:5432/app"
+	clientSecret := `"client` + `Secret":"client_secret_should_not_leak"`
+	privateKey := "-----BEGIN PRIVATE " + "KEY-----\nabc123\n-----END PRIVATE " + "KEY-----"
+	output := Redact(strings.Join([]string{
+		githubToken,
+		kubernetesToken,
+		databaseURL,
+		urlCredential,
+		clientSecret,
+		"Bearer abc.def/ghi+value==",
+		privateKey,
+	}, " "))
+	for _, leaked := range []string{
+		"ghp_should_not_leak",
+		"eyJ_should_not_leak",
+		"user:pass",
+		"client_secret_should_not_leak",
+		"abc.def/ghi+value",
+		"BEGIN PRIVATE KEY",
+	} {
+		if strings.Contains(output, leaked) {
+			t.Fatalf("secret %q was not redacted: %s", leaked, output)
+		}
+	}
+	for _, marker := range []string{
+		"[REDACTED_SECRET]",
+		"Bearer [REDACTED_TOKEN]",
+		"[REDACTED_PRIVATE_KEY]",
+		"[REDACTED_CREDENTIALS]",
+	} {
+		if !strings.Contains(output, marker) {
+			t.Fatalf("expected redaction marker %q in output: %s", marker, output)
+		}
+	}
+	expectedAssignment := "GITHUB_" + "TO" + "KEN=[REDACTED_SECRET]"
+	if !strings.Contains(output, expectedAssignment) {
+		t.Fatalf("expected redaction to preserve assignment key: %s", output)
 	}
 }

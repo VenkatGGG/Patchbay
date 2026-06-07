@@ -1,5 +1,9 @@
-const secretAssignmentPattern =
-  /\b(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GITHUB_TOKEN|DATABASE_URL|GEMINI_API_KEY|GOOGLE_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TAILSCALE_OAUTH_CLIENT_SECRET|PATCHBAY_OPERATOR_TOKEN|PATCHBAY_AGENT_AUTH_SECRET)=\S+/gi;
+const namedSecretKeyPattern =
+  "(?:AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|GITHUB_TOKEN|DATABASE_URL|GEMINI_API_KEY|GOOGLE_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|TAILSCALE_OAUTH_CLIENT_SECRET|PATCHBAY_OPERATOR_TOKEN|PATCHBAY_AGENT_AUTH_SECRET|[A-Z0-9_-]*(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTHORIZATION|COOKIE|API[_-]?KEY|CLIENT[_-]?SECRET)[A-Z0-9_-]*)";
+const secretAssignmentPattern = new RegExp(
+  `(["']?\\b${namedSecretKeyPattern}\\b["']?\\s*(?:=|:)\\s*)(?:"[^"\\r\\n]*"|'[^'\\r\\n]*'|[^\\s,;}]+)`,
+  "gi"
+);
 const bearerPattern = /bearer\s+[A-Za-z0-9._~+/-]+=*/gi;
 const privateKeyPattern =
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
@@ -10,8 +14,8 @@ const sensitiveKeyPattern =
 export function redactString(value: string) {
   return value
     .replace(privateKeyPattern, "[REDACTED_PRIVATE_KEY]")
-    .replace(secretAssignmentPattern, "[REDACTED_SECRET]")
     .replace(bearerPattern, "Bearer [REDACTED_TOKEN]")
+    .replace(secretAssignmentPattern, "$1[REDACTED_SECRET]")
     .replace(urlCredentialPattern, "$1[REDACTED_CREDENTIALS]@");
 }
 
@@ -45,5 +49,6 @@ export function redactValue(value: unknown, depth = 0): unknown {
 }
 
 export function isSensitiveKey(key: string) {
-  return sensitiveKeyPattern.test(key);
+  const normalizedKey = key.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return sensitiveKeyPattern.test(normalizedKey);
 }
