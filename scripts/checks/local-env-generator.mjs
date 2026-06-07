@@ -70,6 +70,30 @@ try {
     "local-only keys should be preserved on backfill"
   );
 
+  const setterTargetPath = join(tempRoot, "setter.env.local");
+  const setterKey = "test-gemini-key-value-updated";
+  const setterOutput = execFileSync("node", ["scripts/setup/set-gemini-key.mjs"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATCHBAY_ENV_LOCAL_TARGET: setterTargetPath,
+      GEMINI_API_KEY: setterKey
+    }
+  });
+  const setterValues = parseEnv(readFileSync(setterTargetPath, "utf8"));
+
+  assert(
+    setterValues.get("GEMINI_API_KEY") === setterKey,
+    "Gemini key setter should write the key to the local envelope"
+  );
+  assert(!setterOutput.includes(setterKey), "Gemini key leaked to setter output");
+  for (const key of generatedKeys) {
+    const value = setterValues.get(key) ?? "";
+    assert(value.length >= 32, `${key} should be generated when setter creates an envelope`);
+    assert(!setterOutput.includes(value), `${key} value leaked to setter output`);
+  }
+
   console.log("Local env generator check passed.");
 } finally {
   rmSync(tempRoot, { recursive: true, force: true });

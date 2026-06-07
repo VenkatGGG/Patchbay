@@ -66,10 +66,11 @@ pnpm env:local
 
 This generates local-only values for operator auth, enrollment signing, and
 agent API token signing without printing those values to the terminal. It leaves
-the Gemini key blank until you have it. When you have the key, set:
+the Gemini key blank until you have it. When you have the key, write it into the
+ignored envelope without printing it:
 
-```text
-GEMINI_API_KEY=<your-key>
+```bash
+GEMINI_API_KEY=<your-key> pnpm env:set-gemini
 ```
 
 Do not commit `.env.local`; it is ignored by Git. `pnpm test:env` checks that

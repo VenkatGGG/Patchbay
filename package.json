@@ -13,6 +13,7 @@
     "agent:build": "mkdir -p agent/bin && go build -trimpath -o agent/bin/patchbay-agent ./agent/cmd/patchbay-agent",
     "agent:run": "go run ./agent/cmd/patchbay-agent",
     "env:local": "node scripts/setup/create-local-env.mjs",
+    "env:set-gemini": "node scripts/setup/set-gemini-key.mjs",
     "test:secrets": "node scripts/checks/secret-guard.mjs",
     "test:env": "node scripts/checks/env-template.mjs",
     "test:env:local": "node scripts/checks/local-env-generator.mjs",
