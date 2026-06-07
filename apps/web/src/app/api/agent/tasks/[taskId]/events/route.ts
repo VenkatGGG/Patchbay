@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyAgentAuthorization } from "@/lib/agent-auth";
+import { parseJsonBody } from "@/lib/api-validation";
 import { store, TaskAssignmentError } from "@/lib/store";
 
 const eventSchema = z.object({
@@ -18,7 +19,10 @@ export async function POST(
   context: { params: Promise<{ taskId: string }> }
 ) {
   const { taskId } = await context.params;
-  const body = eventSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, eventSchema, "Invalid task event");
+  if (!parsed.ok) return parsed.response;
+
+  const body = parsed.data;
   const agentAuth = verifyAgentAuthorization(
     request.headers.get("authorization"),
     body.agentId

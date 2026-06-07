@@ -135,6 +135,30 @@ async function main() {
   );
 
   await expectStatus(
+    "invalid environment creation request is rejected",
+    postJson(
+      "/api/environments",
+      { provider: "aws" },
+      operatorHeaders()
+    ),
+    400
+  );
+
+  await expectStatus(
+    "invalid session creation request is rejected",
+    postJson(
+      "/api/sessions",
+      {
+        environmentId: "env_local",
+        name: "invalid ttl",
+        ttlMinutes: 241
+      },
+      operatorHeaders()
+    ),
+    400
+  );
+
+  await expectStatus(
     "oversized enrollment token ttl is rejected",
     postJson(
       "/api/environments/env_local/enrollment-token",
@@ -160,6 +184,21 @@ async function main() {
   assert(
     Date.parse(tokenResponse.body.expiresAt) > Date.now(),
     "expected minted enrollment token expiry to be in the future"
+  );
+
+  await expectStatus(
+    "invalid enrollment request is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-invalid-capability-agent",
+        version: "test",
+        capabilities: ["shell.exec"]
+      },
+      enrollmentHeaders(tokenResponse.body.token)
+    ),
+    400
   );
 
   const wrongEnvironmentToken = createSignedEnrollmentToken({
@@ -273,6 +312,16 @@ async function main() {
   const sessionId = sessionResponse.body.id;
   assert(sessionId, "expected session id");
 
+  await expectStatus(
+    "invalid diagnostic request is rejected",
+    postJson(
+      `/api/sessions/${sessionId}/diagnostics`,
+      { scenario: "memory_leak" },
+      operatorHeaders()
+    ),
+    400
+  );
+
   const diagnosticResponse = await postJson(
     `/api/sessions/${sessionId}/diagnostics`,
     { scenario: "latency_spike" },
@@ -290,6 +339,22 @@ async function main() {
     (task) => task.agentId === redactionAgentResponse.body.agent.id
   );
   assert(redactionTask?.id, "expected redaction agent diagnostic task");
+
+  await expectStatus(
+    "invalid task event request is rejected",
+    postJson(
+      `/api/agent/tasks/${redactionTask.id}/events`,
+      {
+        agentId: redactionAgentResponse.body.agent.id,
+        status: "completed"
+      },
+      {
+        Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+      }
+    ),
+    400
+  );
+
   const syntheticEnvSecret =
     "GITHUB_" +
     "TO" +

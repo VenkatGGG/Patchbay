@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { parseJsonBody } from "@/lib/api-validation";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
@@ -14,7 +15,13 @@ export async function POST(
   const unauthorized = requireOperator(request);
   if (unauthorized) return unauthorized;
 
-  await diagnosticSchema.parseAsync(await request.json().catch(() => ({})));
+  const parsed = await parseJsonBody(
+    request,
+    diagnosticSchema,
+    "Invalid diagnostic request"
+  );
+  if (!parsed.ok) return parsed.response;
+
   const { sessionId } = await context.params;
   const tasks = await store.createLatencyDiagnostic(sessionId);
   return NextResponse.json(tasks, { status: 201 });

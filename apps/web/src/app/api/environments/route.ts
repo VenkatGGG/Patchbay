@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { parseJsonBody } from "@/lib/api-validation";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
@@ -19,7 +20,14 @@ export async function POST(request: NextRequest) {
   const unauthorized = requireOperator(request);
   if (unauthorized) return unauthorized;
 
-  const body = createEnvironmentSchema.parse(await request.json());
+  const parsed = await parseJsonBody(
+    request,
+    createEnvironmentSchema,
+    "Invalid environment request"
+  );
+  if (!parsed.ok) return parsed.response;
+
+  const body = parsed.data;
   const environment = await store.createEnvironment(body.name, body.provider);
   return NextResponse.json(environment, { status: 201 });
 }

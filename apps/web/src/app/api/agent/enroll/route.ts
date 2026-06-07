@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAgentTokenEnvelope } from "@/lib/agent-auth";
+import { parseJsonBody } from "@/lib/api-validation";
 import {
   enrollmentTokenFromAuthorization,
   verifyEnrollmentToken
@@ -26,7 +27,10 @@ const enrollSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const body = enrollSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, enrollSchema, "Invalid enrollment request");
+  if (!parsed.ok) return parsed.response;
+
+  const body = parsed.data;
   const verification = verifyEnrollmentToken(
     enrollmentTokenFromAuthorization(request.headers.get("authorization")),
     body.environmentId

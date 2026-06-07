@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { parseJsonBody } from "@/lib/api-validation";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
@@ -21,7 +22,10 @@ export async function POST(request: NextRequest) {
   const unauthorized = requireOperator(request);
   if (unauthorized) return unauthorized;
 
-  const body = createSessionSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, createSessionSchema, "Invalid session request");
+  if (!parsed.ok) return parsed.response;
+
+  const body = parsed.data;
   const session = await store.createSession(body);
   return NextResponse.json(session, { status: 201 });
 }

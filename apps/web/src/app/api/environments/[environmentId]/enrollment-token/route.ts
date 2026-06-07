@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { parseJsonBody } from "@/lib/api-validation";
 import { createEnrollmentToken } from "@/lib/enrollment-token";
 import { requireOperator } from "@/lib/operator-auth";
 
@@ -15,19 +16,12 @@ export async function POST(
   if (unauthorized) return unauthorized;
 
   const { environmentId } = await context.params;
-  const parsed = createTokenSchema.safeParse(await request.json().catch(() => ({})));
-  if (!parsed.success) {
-    return NextResponse.json(
-      {
-        error: "Invalid enrollment token request",
-        issues: parsed.error.issues.map((issue) => ({
-          path: issue.path.join("."),
-          message: issue.message
-        }))
-      },
-      { status: 400 }
-    );
-  }
+  const parsed = await parseJsonBody(
+    request,
+    createTokenSchema,
+    "Invalid enrollment token request"
+  );
+  if (!parsed.ok) return parsed.response;
 
   const body = parsed.data;
   const token = createEnrollmentToken(environmentId, body.ttlMinutes);
