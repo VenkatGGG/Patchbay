@@ -5,14 +5,16 @@ import {
   readFileSync,
   writeFileSync
 } from "node:fs";
-import { dirname, relative } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const templatePath = fileURLToPath(new URL("../../.env.example", import.meta.url));
-const targetPath = fileURLToPath(
-  new URL("../../apps/web/.env.local", import.meta.url)
+const targetPath = resolve(
+  repoRoot,
+  process.env.PATCHBAY_ENV_LOCAL_TARGET ?? "apps/web/.env.local"
 );
+const targetDisplayPath = relative(repoRoot, targetPath);
 const targetExisted = existsSync(targetPath);
 
 const generatedKeys = new Set([
@@ -84,14 +86,14 @@ if (extraLocalKeys.length > 0) {
 mkdirSync(dirname(targetPath), { recursive: true });
 writeFileSync(targetPath, `${output.join("\n").replace(/\n+$/u, "")}\n`);
 
-console.log(`${targetExisted ? "Updated" : "Created"} ${relative(repoRoot, targetPath)}`);
+console.log(`${targetExisted ? "Updated" : "Created"} ${targetDisplayPath}`);
 if (generated.length > 0) {
   console.log(`Generated local-only values for: ${generated.join(", ")}`);
 }
 if (preserved.length > 0) {
   console.log(`Preserved existing values for: ${preserved.join(", ")}`);
 }
-console.log("Set GEMINI_API_KEY in apps/web/.env.local when the key is available.");
+console.log(`Set GEMINI_API_KEY in ${targetDisplayPath} when the key is available.`);
 
 function parseEnv(content) {
   const values = new Map();

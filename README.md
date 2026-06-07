@@ -134,13 +134,17 @@ pnpm check
 
 - Secret guard for tracked files.
 - Env template completeness check.
-- Production dashboard smoke test against `next start`.
+- Local env envelope generation and backfill check.
+- Compose security check.
 - Next.js typecheck.
 - Next.js production build.
+- Production dashboard smoke test against `next start`.
 - Go agent tests.
+- Go agent binary build.
 - End-to-end integration smoke test with operator auth, signed enrollment,
   signed agent API tokens, agent diagnostics, report export, and offline Gemini
   synthesis.
+- Offline Gemini fallback smoke test.
 
 Run the same end-to-end test against Postgres:
 
