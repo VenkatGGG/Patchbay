@@ -96,6 +96,40 @@ async function main() {
   );
 
   await expectStatus(
+    "unauthenticated provider registry is rejected",
+    getResponse("/api/llm/providers"),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated environment listing is rejected",
+    getResponse("/api/environments"),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated environment creation is rejected",
+    postJson("/api/environments", { name: "rejected-env", provider: "any" }),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated session listing is rejected",
+    getResponse("/api/sessions"),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated session creation is rejected",
+    postJson("/api/sessions", {
+      environmentId: "env_local",
+      name: "rejected-session",
+      requestedBy: "integration-test"
+    }),
+    401
+  );
+
+  await expectStatus(
     "operator bearer token with trailing words is rejected",
     getResponse("/api/state", {
       Authorization: `Bearer ${operatorToken} trailing`
@@ -567,6 +601,24 @@ async function main() {
   assert(sessionResponse.status === 201, "expected session creation to return 201");
   const sessionId = sessionResponse.body.id;
   assert(sessionId, "expected session id");
+
+  await expectStatus(
+    "unauthenticated diagnostic request is rejected",
+    postJson(`/api/sessions/${sessionId}/diagnostics`, { scenario: "latency_spike" }),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated synthesis request is rejected",
+    postJson(`/api/sessions/${sessionId}/synthesize`, {}),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated report export is rejected",
+    getResponse(`/api/sessions/${sessionId}/report`),
+    401
+  );
 
   await expectStatus(
     "unknown session diagnostic request is rejected",
