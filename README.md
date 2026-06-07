@@ -145,6 +145,7 @@ pnpm check
 - End-to-end integration smoke test with operator auth, signed enrollment,
   signed agent API tokens, agent diagnostics, report export, and offline Gemini
   synthesis.
+- Task timeout smoke test for stale running diagnostics.
 - Offline Gemini fallback smoke test.
 
 Run the same end-to-end test against Postgres:
@@ -221,6 +222,10 @@ curl -X POST http://localhost:3000/api/sessions/<session-id>/close \
 Closing a session marks queued or running tasks as denied, records a
 `session.closed` audit event, prevents further diagnostic dispatch for that
 session, and rejects late agent task events.
+
+Running diagnostics that exceed `PATCHBAY_TASK_TIMEOUT_SECONDS` are marked
+failed, emit a `task.timed_out` audit event, and reject late agent completion
+events. The default timeout is 300 seconds.
 
 ### Agent Enrollment Tokens
 

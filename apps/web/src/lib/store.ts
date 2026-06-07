@@ -114,6 +114,7 @@ class MemoryStore implements PatchbayStore {
 
   async snapshot(): Promise<ControlPlaneState> {
     this.expireSessions();
+    this.expireRunningTasks();
 
     return {
       environments: [...this.environments.values()],
@@ -210,6 +211,7 @@ class MemoryStore implements PatchbayStore {
 
   async closeSession(sessionId: string, actor = "operator"): Promise<DebugSession> {
     this.expireSessions();
+    this.expireRunningTasks();
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Unknown session: ${sessionId}`);
@@ -265,6 +267,8 @@ class MemoryStore implements PatchbayStore {
   }
 
   async claimTasks(agentId: string): Promise<DiagnosticTask[]> {
+    this.expireSessions();
+    this.expireRunningTasks();
     const agent = this.agents.get(agentId);
     if (!agent) {
       throw new Error(`Unknown agent: ${agentId}`);
@@ -304,6 +308,7 @@ class MemoryStore implements PatchbayStore {
 
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
     this.expireSessions();
+    this.expireRunningTasks();
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error(`Unknown task: ${taskId}`);
@@ -363,6 +368,33 @@ class MemoryStore implements PatchbayStore {
     }
   }
 
+  private expireRunningTasks() {
+    const timeoutSeconds = taskTimeoutSeconds();
+    const deadline = Date.now() - timeoutSeconds * 1000;
+    const expiredAt = now();
+
+    for (const task of this.tasks.values()) {
+      const startedAtMs = task.startedAt ? Date.parse(task.startedAt) : Number.NaN;
+      if (
+        task.status === "running" &&
+        Number.isFinite(startedAtMs) &&
+        startedAtMs <= deadline
+      ) {
+        this.tasks.set(task.id, {
+          ...task,
+          status: "failed",
+          completedAt: expiredAt,
+          error: taskTimeoutMessage(timeoutSeconds)
+        });
+        this.addAudit("task.timed_out", "system", task.id, {
+          sessionId: task.sessionId,
+          agentId: task.agentId,
+          timeoutSeconds
+        });
+      }
+    }
+  }
+
   private addAudit(
     action: string,
     actor: string,
@@ -387,6 +419,7 @@ class PostgresStore implements PatchbayStore {
   async snapshot(): Promise<ControlPlaneState> {
     await this.ensureDefaultEnvironment();
     await this.expireSessions();
+    await this.expireRunningTasks();
 
     const [
       environments,
@@ -529,6 +562,7 @@ class PostgresStore implements PatchbayStore {
 
   async closeSession(sessionId: string, actor = "operator"): Promise<DebugSession> {
     await this.expireSessions();
+    await this.expireRunningTasks();
     const sessionResult = await this.pool.query("SELECT * FROM sessions WHERE id = $1", [
       sessionId
     ]);
@@ -629,6 +663,8 @@ class PostgresStore implements PatchbayStore {
   }
 
   async claimTasks(agentId: string): Promise<DiagnosticTask[]> {
+    await this.expireSessions();
+    await this.expireRunningTasks();
     const agent = await this.pool.query("SELECT id FROM agents WHERE id = $1", [agentId]);
     if (agent.rowCount === 0) {
       throw new Error(`Unknown agent: ${agentId}`);
@@ -662,6 +698,7 @@ class PostgresStore implements PatchbayStore {
 
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
     await this.expireSessions();
+    await this.expireRunningTasks();
     const taskResult = await this.pool.query(
       `
         SELECT task.*, session.status AS session_status
@@ -802,6 +839,32 @@ class PostgresStore implements PatchbayStore {
     );
   }
 
+  private async expireRunningTasks() {
+    const timeoutSeconds = taskTimeoutSeconds();
+    const result = await this.pool.query(
+      `
+        UPDATE session_tasks
+        SET
+          status = 'failed',
+          completed_at = now(),
+          error = $2
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at <= now() - ($1 || ' seconds')::interval
+        RETURNING id, session_id, agent_id
+      `,
+      [timeoutSeconds, taskTimeoutMessage(timeoutSeconds)]
+    );
+
+    for (const row of result.rows) {
+      await this.addAudit("task.timed_out", "system", stringValue(row.id), {
+        sessionId: stringValue(row.session_id),
+        agentId: stringValue(row.agent_id),
+        timeoutSeconds
+      });
+    }
+  }
+
   private async addAudit(
     action: string,
     actor: string,
@@ -901,6 +964,17 @@ const ensureTaskEventCanApply = (task: DiagnosticTask, input: AddTaskEventInput)
 
 const isTerminalTaskStatus = (status: TaskStatus) =>
   status === "completed" || status === "failed" || status === "denied";
+
+const taskTimeoutSeconds = () => {
+  const value = Number(process.env.PATCHBAY_TASK_TIMEOUT_SECONDS ?? 5 * 60);
+  if (!Number.isInteger(value) || value <= 0) {
+    return 5 * 60;
+  }
+  return Math.min(value, 24 * 60 * 60);
+};
+
+const taskTimeoutMessage = (timeoutSeconds: number) =>
+  `Task timed out after ${timeoutSeconds} seconds`;
 
 const paramsFor = (capability: Capability): Record<string, unknown> => {
   switch (capability) {

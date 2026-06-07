@@ -67,9 +67,11 @@ expiry. Task event ingestion also verifies the authenticated agent owns the task
 before accepting status or result updates. Task polling atomically claims queued
 work by moving it to `running`, which prevents repeated polls from dispatching
 the same task twice. Agent event ingestion rejects requeue attempts and terminal
-task rewrites so completed, failed, or denied results remain auditable. Closed
-or expired sessions reject late task events so session-scoped authority ends at
-the control plane boundary, not just in the dashboard.
+task rewrites so completed, failed, or denied results remain auditable. Running
+tasks that exceed `PATCHBAY_TASK_TIMEOUT_SECONDS` fail with a `task.timed_out`
+audit event. Closed or expired sessions reject late task events so
+session-scoped authority ends at the control plane boundary, not just in the
+dashboard.
 
 ## Agent
 
@@ -136,6 +138,8 @@ Agents should reject work outside an active session.
 Operators can close active sessions early. Closing a session marks queued or
 running tasks as denied, records a `session.closed` audit event, stops future
 diagnostic dispatch for that session, and rejects late task event writes.
+Running tasks also have a configurable timeout, defaulting to 300 seconds, so an
+agent crash cannot leave a diagnostic permanently `running`.
 
 ## Tailscale Model
 
