@@ -10,9 +10,11 @@
     "db:migrate": "pnpm --filter @patchbay/web db:migrate",
     "agent:test": "go test ./agent/...",
     "agent:run": "go run ./agent/cmd/patchbay-agent",
+    "env:local": "node scripts/setup/create-local-env.mjs",
     "test:secrets": "node scripts/checks/secret-guard.mjs",
+    "test:env": "node scripts/checks/env-template.mjs",
     "test:integration": "node scripts/integration/smoke.mjs",
     "test:integration:postgres": "PATCHBAY_INTEGRATION_STORAGE=postgres node scripts/integration/smoke.mjs",
-    "check": "pnpm test:secrets && pnpm web:typecheck && pnpm web:build && pnpm agent:test && pnpm test:integration"
+    "check": "pnpm test:secrets && pnpm test:env && pnpm web:typecheck && pnpm web:build && pnpm agent:test && pnpm test:integration"
   }
 }

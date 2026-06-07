@@ -49,21 +49,31 @@ Prerequisites:
 The local prototype can run without a real Tailscale tailnet while the
 integration boundary is developed.
 
-### Gemini API Key
+### Local Secret Envelope
 
-The app reads local secrets from:
+The app reads local secrets from an ignored local envelope file:
 
 ```text
 apps/web/.env.local
 ```
 
-When you have the key, set:
+Create or backfill it from the tracked template:
+
+```bash
+pnpm env:local
+```
+
+This generates local-only values for operator auth, enrollment signing, and
+agent API token signing without printing those values to the terminal. It leaves
+the Gemini key blank until you have it. When you have the key, set:
 
 ```text
 GEMINI_API_KEY=<your-key>
 ```
 
-Do not commit `.env.local`; it is ignored by Git.
+Do not commit `.env.local`; it is ignored by Git. `pnpm test:env` checks that
+the tracked `.env.example` keeps every required key present and keeps real
+secret values out of the template.
 
 ### Operator Token
 
@@ -112,6 +122,7 @@ pnpm check
 `pnpm check` runs:
 
 - Secret guard for tracked files.
+- Env template completeness check.
 - Next.js typecheck.
 - Next.js production build.
 - Go agent tests.

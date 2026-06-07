@@ -77,6 +77,8 @@ Minimum requirements:
 - Never send raw secrets to Gemini.
 - Keep `GEMINI_API_KEY`, `PATCHBAY_OPERATOR_TOKEN`, and
   `PATCHBAY_AGENT_AUTH_SECRET` in ignored local or deployment secret stores.
+- Use `pnpm env:local` to create the ignored `apps/web/.env.local` envelope
+  with generated local signing tokens before adding real provider credentials.
 - Keep artifact retention configurable.
 - Make persistence optional for self-hosted deployments.
 
