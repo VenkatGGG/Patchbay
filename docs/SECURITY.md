@@ -54,6 +54,8 @@ Control plane:
 - Task audit log.
 - Environment-scoped agents.
 - Provider-based LLM integration.
+- JSON API request bodies are capped by `PATCHBAY_MAX_JSON_BODY_BYTES`, which
+  defaults to 1 MiB and is bounded to a maximum of 10 MiB.
 
 Agent:
 

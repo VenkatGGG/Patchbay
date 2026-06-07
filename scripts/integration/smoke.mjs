@@ -31,6 +31,7 @@ async function main() {
       PATCHBAY_REQUIRE_AGENT_TOKEN: "true",
       PATCHBAY_AGENT_AUTH_SECRET: "integration-agent-auth-secret",
       PATCHBAY_AGENT_TOKEN_TTL_MINUTES: "30",
+      PATCHBAY_MAX_JSON_BODY_BYTES: "262144",
       PATCHBAY_LLM_PROVIDER: "gemini",
       PATCHBAY_OPERATOR_TOKEN: operatorToken
     }
@@ -219,6 +220,17 @@ async function main() {
     postRaw("/api/environments", '{"name":', operatorHeaders()),
     400,
     "Malformed JSON request body"
+  );
+
+  await expectError(
+    "oversized environment JSON is rejected",
+    postRaw(
+      "/api/environments",
+      JSON.stringify({ name: "x".repeat(262_145), provider: "any" }),
+      operatorHeaders()
+    ),
+    413,
+    "JSON request body exceeds 262144 bytes"
   );
 
   await expectStatus(
