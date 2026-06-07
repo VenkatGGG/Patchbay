@@ -95,7 +95,10 @@ async function main() {
   }
   assertNoSecretLeak("dashboard HTML", html);
 
-  const ready = await getJson("/api/ready");
+  const readyResponse = await getResponse("/api/ready");
+  assert(readyResponse.status === 200, `expected readiness 200, got ${readyResponse.status}`);
+  expectHeader(readyResponse.headers, "cache-control", "no-store");
+  const ready = readyResponse.body;
   assertNoSecretLeak("readiness payload", JSON.stringify(ready));
   assert(ready.status === "ready", "expected readiness endpoint to report ready");
   assert(ready.operatorAuth.required === true, "expected operator auth required");
@@ -109,12 +112,14 @@ async function main() {
   expectReadinessCheck(ready, "tailscale", "warning");
 
   const unauthenticatedState = await getResponse("/api/state");
+  expectHeader(unauthenticatedState.headers, "cache-control", "no-store");
   assert(
     unauthenticatedState.status === 401,
     `expected unauthenticated state request 401, got ${unauthenticatedState.status}`
   );
 
   const authenticatedState = await getResponse("/api/state", operatorHeaders());
+  expectHeader(authenticatedState.headers, "cache-control", "no-store");
   assert(
     authenticatedState.status === 200,
     `expected authenticated state request 200, got ${authenticatedState.status}`
@@ -124,6 +129,46 @@ async function main() {
     "expected local environment in authenticated dashboard state"
   );
   assertNoSecretLeak("authenticated state payload", JSON.stringify(authenticatedState.body));
+
+  const enrollmentTokenResponse = await postJson(
+    "/api/environments/env_local/enrollment-token",
+    { ttlMinutes: 15 },
+    operatorHeaders()
+  );
+  expectHeader(enrollmentTokenResponse.headers, "cache-control", "no-store");
+  assert(
+    enrollmentTokenResponse.status === 200,
+    `expected enrollment token minting 200, got ${enrollmentTokenResponse.status}`
+  );
+  assert(enrollmentTokenResponse.body.token, "expected enrollment token");
+
+  const agentResponse = await postJson(
+    "/api/agent/enroll",
+    {
+      environmentId: "env_local",
+      name: "ui-smoke-agent",
+      version: "test",
+      capabilities: ["system.info"]
+    },
+    enrollmentHeaders(enrollmentTokenResponse.body.token)
+  );
+  expectHeader(agentResponse.headers, "cache-control", "no-store");
+  assert(
+    agentResponse.status === 201,
+    `expected agent enrollment 201, got ${agentResponse.status}`
+  );
+  assert(agentResponse.body.agentToken, "expected signed agent token");
+
+  const postEnrollmentState = await getResponse("/api/state", operatorHeaders());
+  expectHeader(postEnrollmentState.headers, "cache-control", "no-store");
+  assert(
+    postEnrollmentState.status === 200,
+    `expected post-enrollment state 200, got ${postEnrollmentState.status}`
+  );
+  assertNoValueLeak("post-enrollment state payload", JSON.stringify(postEnrollmentState.body), [
+    enrollmentTokenResponse.body.token,
+    agentResponse.body.agentToken
+  ]);
 
   console.log(
     JSON.stringify(
@@ -212,6 +257,23 @@ async function getResponse(path, headers = {}) {
   });
   return {
     status: response.status,
+    headers: response.headers,
+    body: await response.json().catch(() => ({}))
+  };
+}
+
+async function postJson(path, payload, headers = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers
+    },
+    body: JSON.stringify(payload)
+  });
+  return {
+    status: response.status,
+    headers: response.headers,
     body: await response.json().catch(() => ({}))
   };
 }
@@ -219,6 +281,12 @@ async function getResponse(path, headers = {}) {
 function operatorHeaders() {
   return {
     Authorization: `Bearer ${operatorToken}`
+  };
+}
+
+function enrollmentHeaders(token) {
+  return {
+    Authorization: `Bearer ${token}`
   };
 }
 
@@ -244,8 +312,15 @@ function expectHeader(headers, name, expected) {
 }
 
 function assertNoSecretLeak(label, value) {
-  for (const secret of serverSideSecrets) {
-    assert(!value.includes(secret), `expected ${label} not to include ${secret}`);
+  assertNoValueLeak(label, value, serverSideSecrets);
+}
+
+function assertNoValueLeak(label, value, sensitiveValues) {
+  for (const sensitiveValue of sensitiveValues) {
+    assert(
+      !value.includes(sensitiveValue),
+      `expected ${label} not to include ${sensitiveValue}`
+    );
   }
 }
 
