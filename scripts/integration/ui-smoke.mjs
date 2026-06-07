@@ -8,6 +8,9 @@ const port = Number(process.env.PATCHBAY_UI_SMOKE_PORT ?? 3104);
 const baseUrl = `http://127.0.0.1:${port}`;
 const operatorToken =
   process.env.PATCHBAY_UI_SMOKE_OPERATOR_TOKEN ?? "ui-smoke-operator-token";
+const enrollmentSecret = "ui-smoke-enrollment-secret";
+const agentAuthSecret = "ui-smoke-agent-secret";
+const serverSideSecrets = [operatorToken, enrollmentSecret, agentAuthSecret];
 const children = [];
 
 if (!existsSync(buildPath)) {
@@ -37,9 +40,9 @@ async function main() {
       GEMINI_API_KEY: "",
       PATCHBAY_OPERATOR_TOKEN: operatorToken,
       PATCHBAY_REQUIRE_ENROLLMENT_TOKEN: "true",
-      PATCHBAY_ENROLLMENT_SECRET: "ui-smoke-enrollment-secret",
+      PATCHBAY_ENROLLMENT_SECRET: enrollmentSecret,
       PATCHBAY_REQUIRE_AGENT_TOKEN: "true",
-      PATCHBAY_AGENT_AUTH_SECRET: "ui-smoke-agent-secret",
+      PATCHBAY_AGENT_AUTH_SECRET: agentAuthSecret,
       PATCHBAY_AGENT_TOKEN_TTL_MINUTES: "30",
       TAILSCALE_TAILNET: "",
       TAILSCALE_OAUTH_CLIENT_ID: "",
@@ -56,6 +59,20 @@ async function main() {
     htmlResponse.headers.get("content-type")?.includes("text/html"),
     "expected dashboard response to be HTML"
   );
+  expectHeader(htmlResponse.headers, "content-security-policy", [
+    "default-src 'self'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "connect-src 'self'"
+  ]);
+  expectHeader(htmlResponse.headers, "referrer-policy", "no-referrer");
+  expectHeader(htmlResponse.headers, "x-content-type-options", "nosniff");
+  expectHeader(htmlResponse.headers, "x-frame-options", "DENY");
+  expectHeader(htmlResponse.headers, "permissions-policy", [
+    "camera=()",
+    "microphone=()",
+    "geolocation=()"
+  ]);
   const html = await htmlResponse.text();
   for (const expected of [
     "Patchbay",
@@ -76,8 +93,10 @@ async function main() {
   ]) {
     assert(html.includes(expected), `expected dashboard HTML to include ${expected}`);
   }
+  assertNoSecretLeak("dashboard HTML", html);
 
   const ready = await getJson("/api/ready");
+  assertNoSecretLeak("readiness payload", JSON.stringify(ready));
   assert(ready.status === "ready", "expected readiness endpoint to report ready");
   assert(ready.operatorAuth.required === true, "expected operator auth required");
   assert(ready.enrollmentAuth.required === true, "expected enrollment auth required");
@@ -104,6 +123,7 @@ async function main() {
     authenticatedState.body.environments.some((environment) => environment.id === "env_local"),
     "expected local environment in authenticated dashboard state"
   );
+  assertNoSecretLeak("authenticated state payload", JSON.stringify(authenticatedState.body));
 
   console.log(
     JSON.stringify(
@@ -209,6 +229,24 @@ function expectReadinessCheck(ready, id, status) {
     check.status === status,
     `expected readiness check ${id} to be ${status}, got ${check.status}`
   );
+}
+
+function expectHeader(headers, name, expected) {
+  const value = headers.get(name);
+  assert(value, `expected ${name} header`);
+  const fragments = Array.isArray(expected) ? expected : [expected];
+  for (const fragment of fragments) {
+    assert(
+      value.includes(fragment),
+      `expected ${name} header to include ${fragment}, got ${value}`
+    );
+  }
+}
+
+function assertNoSecretLeak(label, value) {
+  for (const secret of serverSideSecrets) {
+    assert(!value.includes(secret), `expected ${label} not to include ${secret}`);
+  }
 }
 
 function assert(condition, message) {
