@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: patchbay
+          POSTGRES_PASSWORD: patchbay
+          POSTGRES_DB: patchbay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U patchbay -d patchbay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://patchbay:patchbay@localhost:5432/patchbay
+      PATCHBAY_ENROLLMENT_SECRET: ci-enrollment-secret
+      GEMINI_API_KEY: ""
+      GEMINI_MODEL: gemini-2.5-flash
+      PATCHBAY_LLM_PROVIDER: gemini
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "25"
+          cache: pnpm
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run default checks
+        run: pnpm check
+
+      - name: Run Postgres integration smoke test
+        run: pnpm test:integration:postgres
+
+      - name: Validate compose file
+        run: docker compose config
+

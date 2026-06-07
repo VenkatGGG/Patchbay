@@ -93,11 +93,19 @@ pnpm check
 
 `pnpm check` runs:
 
+- Secret guard for tracked files.
 - Next.js typecheck.
 - Next.js production build.
 - Go agent tests.
 - End-to-end integration smoke test with signed enrollment, agent diagnostics,
   and offline Gemini synthesis.
+
+Run the same end-to-end test against Postgres:
+
+```bash
+pnpm db:up
+pnpm test:integration:postgres
+```
 
 ### Agent Enrollment Tokens
 

@@ -1,18 +1,29 @@
 import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
+const execFileAsync = promisify(execFile);
 const port = Number(process.env.PATCHBAY_INTEGRATION_PORT ?? 3100);
 const baseUrl = `http://127.0.0.1:${port}`;
+const storageMode = process.env.PATCHBAY_INTEGRATION_STORAGE ?? "memory";
+const databaseUrl = process.env.PATCHBAY_INTEGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
 const children = [];
 
 async function main() {
+  if (storageMode === "postgres") {
+    assert(databaseUrl, "PATCHBAY_INTEGRATION_DATABASE_URL or DATABASE_URL is required for postgres integration tests");
+    await migrateDatabase(databaseUrl);
+  }
+
   const web = spawnProcess(
     "pnpm",
     ["--filter", "@patchbay/web", "exec", "next", "dev", "--hostname", "127.0.0.1", "--port", String(port)],
     {
       PATCHBAY_REQUIRE_ENROLLMENT_TOKEN: "true",
       PATCHBAY_ENROLLMENT_SECRET: "integration-secret",
-      PATCHBAY_STORAGE: "memory",
+      PATCHBAY_STORAGE: storageMode,
+      DATABASE_URL: databaseUrl ?? "",
       GEMINI_API_KEY: "",
       PATCHBAY_LLM_PROVIDER: "gemini"
     }
@@ -103,6 +114,7 @@ async function main() {
     JSON.stringify(
       {
         ok: true,
+        storage: storageMode,
         agents: finalState.agents.length,
         tasks: finalTasks.length,
         completed: finalTasks.filter((task) => task.status === "completed").length,
@@ -112,6 +124,26 @@ async function main() {
       2
     )
   );
+}
+
+async function migrateDatabase(connectionString) {
+  const { stdout, stderr } = await execFileAsync(
+    "pnpm",
+    ["--filter", "@patchbay/web", "db:migrate"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DATABASE_URL: connectionString
+      }
+    }
+  );
+  if (stdout.trim()) {
+    process.stdout.write(`[migrate] ${stdout}`);
+  }
+  if (stderr.trim()) {
+    process.stderr.write(`[migrate] ${stderr}`);
+  }
 }
 
 function spawnProcess(command, args, env = {}) {
