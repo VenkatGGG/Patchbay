@@ -66,7 +66,7 @@ try {
   }
 
   assert(
-    secondValues.get("PATCHBAY_EXTRA_LOCAL_SECRET") === "extra-local-value",
+    secondValues.get("PATCHBAY_EXTRA_LOCAL_FLAG") === "extra-local-value",
     "local-only keys should be preserved on backfill"
   );
 
@@ -93,7 +93,7 @@ function buildExistingEnvelope(values) {
     lines.push(`${key}=${dummyLiveValues.get(key) ?? value}`);
   }
 
-  lines.push("PATCHBAY_EXTRA_LOCAL_SECRET=extra-local-value");
+  lines.push("PATCHBAY_EXTRA_LOCAL_FLAG=extra-local-value");
   return `${lines.join("\n")}\n`;
 }
 

@@ -122,7 +122,8 @@ The compose stack reads `apps/web/.env.local` as an optional secret envelope and
 overrides `DATABASE_URL` for the in-network Postgres service. If you deploy from
 a shell or CI secret store instead, export the same variables before running
 compose. The tracked compose defaults require signed enrollment and signed agent
-API tokens.
+API tokens. Local env files are excluded from the Docker build context so
+secrets are injected at runtime, not baked into the image.
 
 ### Tests
 

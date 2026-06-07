@@ -2,6 +2,13 @@
 .patchbay
 .DS_Store
 
+.env
+.env.*
+!.env.example
+apps/web/.env
+apps/web/.env.*
+!apps/web/.env.example
+
 node_modules
 apps/web/node_modules
 apps/web/.next
@@ -10,4 +17,3 @@ apps/web/tsconfig.tsbuildinfo
 
 agent/bin
 tmp
-

@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const composePath = fileURLToPath(new URL("../../docker-compose.yml", import.meta.url));
+const dockerignorePath = fileURLToPath(new URL("../../.dockerignore", import.meta.url));
 const compose = readFileSync(composePath, "utf8");
+const dockerignoreLines = readFileSync(dockerignorePath, "utf8")
+  .split("\n")
+  .map((line) => line.trim())
+  .filter(Boolean);
 
 const requiredSnippets = [
   "path: ./apps/web/.env.local",
@@ -35,6 +40,12 @@ for (const snippet of requiredSnippets) {
 for (const snippet of forbiddenSnippets) {
   if (compose.includes(snippet)) {
     failures.push(`docker-compose.yml contains forbidden insecure setting: ${snippet}`);
+  }
+}
+
+for (const pattern of [".env", ".env.*", "apps/web/.env", "apps/web/.env.*"]) {
+  if (!dockerignoreLines.includes(pattern)) {
+    failures.push(`.dockerignore must exclude secret envelope pattern: ${pattern}`);
   }
 }
 
