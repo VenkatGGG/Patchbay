@@ -58,8 +58,19 @@ async function main() {
     `expected readiness storage ${storageMode}, got ${ready.runtime.storage}`
   );
 
+  const environmentResponse = await postJson(
+    "/api/environments",
+    {
+      name: `Task timeout ${Date.now()}`,
+      provider: "any"
+    },
+    operatorHeaders()
+  );
+  assert(environmentResponse.status === 201, "expected isolated environment");
+  const environmentId = environmentResponse.body.id;
+
   const enrollmentTokenResponse = await postJson(
-    "/api/environments/env_local/enrollment-token",
+    `/api/environments/${environmentId}/enrollment-token`,
     { ttlMinutes: 15 },
     operatorHeaders()
   );
@@ -68,7 +79,7 @@ async function main() {
   const agentResponse = await postJson(
     "/api/agent/enroll",
     {
-      environmentId: "env_local",
+      environmentId,
       name: "task-timeout-agent",
       version: "test",
       capabilities: ["system.info"]
@@ -81,7 +92,7 @@ async function main() {
   const sessionResponse = await postJson(
     "/api/sessions",
     {
-      environmentId: "env_local",
+      environmentId,
       name: "task timeout session",
       requestedBy: "task-timeout-test",
       ttlMinutes: 30
