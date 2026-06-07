@@ -386,6 +386,42 @@ button {
   line-height: 1.5;
 }
 
+.result-list {
+  display: grid;
+  gap: 8px;
+}
+
+.result-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcf9;
+  overflow: hidden;
+}
+
+.result-item summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.result-json {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  color: var(--text);
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .empty {
   padding: 24px;
   color: var(--muted);
@@ -420,4 +456,3 @@ button {
     flex-wrap: wrap;
   }
 }
-

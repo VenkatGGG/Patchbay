@@ -12,7 +12,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { ControlPlaneState, DebugSession } from "@/lib/types";
+import { ControlPlaneState, DebugSession, DiagnosticTask } from "@/lib/types";
 
 const emptyState: ControlPlaneState = {
   environments: [],
@@ -46,6 +46,9 @@ export function ControlPlaneDashboard() {
         .filter((event) => event.sessionId === selectedSession.id)
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     : [];
+  const selectedCompletedTasks = selectedTasks.filter(
+    (task) => task.status === "completed" && task.result !== undefined
+  );
   const latestSynthesis = selectedSession
     ? state.syntheses
         .filter((synthesis) => synthesis.sessionId === selectedSession.id)
@@ -339,6 +342,22 @@ export function ControlPlaneDashboard() {
             </Panel>
 
             <Panel
+              icon={<FileText size={17} />}
+              title="Diagnostic Results"
+              subtitle={`${selectedCompletedTasks.length} completed payloads`}
+            >
+              {selectedCompletedTasks.length === 0 ? (
+                <div className="empty">No completed diagnostic payloads yet.</div>
+              ) : (
+                <div className="result-list">
+                  {selectedCompletedTasks.map((task) => (
+                    <DiagnosticResult task={task} key={task.id} />
+                  ))}
+                </div>
+              )}
+            </Panel>
+
+            <Panel
               icon={<Sparkles size={17} />}
               title="Gemini Synthesis"
               subtitle={latestSynthesis?.provider ?? "Not synthesized"}
@@ -418,7 +437,23 @@ function StatusPill({ value }: { value: string }) {
   return <span className={`pill ${value}`}>{value}</span>;
 }
 
+function DiagnosticResult({ task }: { task: DiagnosticTask }) {
+  return (
+    <details className="result-item">
+      <summary>
+        <span className="mono">{task.capability}</span>
+        <StatusPill value={task.status} />
+      </summary>
+      <pre className="result-json">{formatResult(task.result)}</pre>
+    </details>
+  );
+}
+
+function formatResult(result: unknown) {
+  const rendered = JSON.stringify(result, null, 2) ?? "";
+  return rendered.length > 2200 ? `${rendered.slice(0, 2200)}\n...` : rendered;
+}
+
 function countTasks(state: ControlPlaneState, status: string) {
   return state.tasks.filter((task) => task.status === status).length;
 }
-

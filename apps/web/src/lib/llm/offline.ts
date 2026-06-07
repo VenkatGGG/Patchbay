@@ -12,17 +12,17 @@ export const offlineProvider: LLMProvider = {
     evidence: EvidencePayload
   ): Promise<SynthesisResult> {
     const serialized = JSON.stringify(evidence);
-    const eventCount = evidence.events.length;
+    const eventCount = evidence.summary.eventCount;
 
     return {
       provider: "offline",
       summary: [
         "Summary",
-        `Session ${session.name} has ${eventCount} collected task events.`,
+        `Session ${session.name} has ${eventCount} collected task events across ${evidence.summary.taskCount} tasks.`,
         "",
         "Evidence",
         serialized.length > 2
-          ? "Read-only agent evidence is available in the event stream."
+          ? `Read-only evidence is available for: ${evidence.summary.capabilities.join(", ")}.`
           : "No agent evidence has been collected yet.",
         "",
         "Likely Causes",
@@ -34,4 +34,3 @@ export const offlineProvider: LLMProvider = {
     };
   }
 };
-
