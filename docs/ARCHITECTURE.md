@@ -68,11 +68,27 @@ The agent exposes capabilities rather than arbitrary commands.
 
 Initial capabilities:
 
+- `workload.discover`
 - `system.info`
 - `process.list`
 - `disk.usage`
 - `network.connections`
 - `logs.search`
+- `docker.containers`
+- `kubernetes.resources`
+
+Capabilities are grouped into workload packs. A workload pack can be present but
+unavailable on a specific machine; for example, the Docker pack should return a
+read-only "docker not available" result instead of failing enrollment.
+
+Initial workload packs:
+
+- Host: OS, process, disk, network, and log diagnostics.
+- Docker: container inventory and status.
+- Kubernetes: pods, deployments, events, and node-level inventory.
+
+Future packs should use the same task/event protocol for ECS, EC2, CloudWatch,
+GCE, GKE, Cloud Logging, databases, queues, and service meshes.
 
 ## Session Model
 
@@ -117,7 +133,9 @@ session authorization.
 
 ## LLM Provider
 
-The LLM layer is provider-based. Gemini is the first implementation.
+The LLM layer is provider-based. Gemini is the first implementation, but the
+control plane should select providers through a registry rather than direct SDK
+calls from routes.
 
 The LLM receives redacted evidence and emits structured synthesis:
 
@@ -128,3 +146,14 @@ The LLM receives redacted evidence and emits structured synthesis:
 
 The LLM does not receive raw secrets and does not directly execute actions.
 
+Provider contract:
+
+```text
+LLMProvider
+  id
+  display_name
+  configured()
+  synthesize(session, evidence)
+```
+
+The fallback provider must stay available for local development and tests.

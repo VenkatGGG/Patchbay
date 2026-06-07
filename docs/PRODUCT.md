@@ -31,6 +31,11 @@ Supported workflow:
 6. Ask Gemini to summarize the evidence.
 7. Export a session report.
 
+The first implementation should be workload-open rather than environment-bound.
+Patchbay should not assume Kubernetes, cloud, Docker, or a specific VM layout.
+Agents discover what they can inspect, report capabilities, and receive only
+tasks they explicitly support.
+
 Out of scope for v0:
 
 - Shell execution.
@@ -74,4 +79,3 @@ recent deploy marker. The most likely cause is connection pool exhaustion.
 - The LLM can recommend, but cannot execute privileged actions.
 - Auditability is part of the product, not an enterprise add-on.
 - Tailscale is the connectivity substrate, not the whole product.
-
