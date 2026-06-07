@@ -64,7 +64,10 @@ async function main() {
     "Readiness Checks",
     "Session Control",
     "Diagnostic Results",
-    "Gemini Synthesis"
+    "Gemini Synthesis",
+    "Operator token required",
+    "Paste operator token",
+    "Clear operator token"
   ]) {
     assert(html.includes(expected), `expected dashboard HTML to include ${expected}`);
   }

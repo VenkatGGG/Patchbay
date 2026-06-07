@@ -7,11 +7,13 @@ import {
   FileDown,
   FileText,
   Gauge,
+  KeyRound,
   Network,
   RefreshCcw,
   ShieldCheck,
   ShieldAlert,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { redactValue } from "@/lib/redaction";
@@ -68,7 +70,11 @@ type RuntimeStatus = {
   }>;
 };
 
-export function ControlPlaneDashboard() {
+export function ControlPlaneDashboard({
+  initialOperatorAuthRequired = false
+}: {
+  initialOperatorAuthRequired?: boolean;
+}) {
   const [state, setState] = useState<ControlPlaneState>(emptyState);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [sessionName, setSessionName] = useState("checkout latency investigation");
@@ -79,7 +85,7 @@ export function ControlPlaneDashboard() {
   const [operatorToken, setOperatorToken] = useState("");
   const [pendingOperatorToken, setPendingOperatorToken] = useState("");
   const [operatorTokenLoaded, setOperatorTokenLoaded] = useState(false);
-  const [authRequired, setAuthRequired] = useState(false);
+  const [authRequired, setAuthRequired] = useState(initialOperatorAuthRequired);
   const [notice, setNotice] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -281,6 +287,15 @@ export function ControlPlaneDashboard() {
     setError("");
   }
 
+  function clearOperatorToken() {
+    window.localStorage.removeItem("patchbay.operatorToken");
+    setOperatorToken("");
+    setPendingOperatorToken("");
+    setAuthRequired(runtimeStatus?.operatorAuth.required ?? initialOperatorAuthRequired);
+    setNotice("Operator token cleared");
+    setError("");
+  }
+
   useEffect(() => {
     const savedToken = window.localStorage.getItem("patchbay.operatorToken") ?? "";
     setOperatorToken(savedToken);
@@ -381,31 +396,50 @@ export function ControlPlaneDashboard() {
           </div>
         )}
 
-        {authRequired && (
+        {(authRequired || runtimeStatus?.operatorAuth.required) && (
           <div className="auth-panel" role="form" aria-label="Operator token">
             <div className="auth-copy">
-              <ShieldCheck size={17} />
+              {operatorToken ? <ShieldCheck size={17} /> : <KeyRound size={17} />}
               <div>
-                <strong>Operator token required</strong>
-                <span>Use the token configured in PATCHBAY_OPERATOR_TOKEN.</span>
+                <strong>
+                  {operatorToken ? "Operator token saved" : "Operator token required"}
+                </strong>
+                <span>
+                  {operatorToken
+                    ? "Requests use the local browser token."
+                    : "Use the token configured in PATCHBAY_OPERATOR_TOKEN."}
+                </span>
               </div>
             </div>
-            <input
-              className="input"
-              type="password"
-              value={pendingOperatorToken}
-              onChange={(event) => setPendingOperatorToken(event.target.value)}
-              aria-label="Operator token"
-              autoComplete="off"
-            />
-            <button
-              className="button"
-              type="button"
-              onClick={saveOperatorToken}
-              disabled={!pendingOperatorToken.trim()}
-            >
-              Save Token
-            </button>
+            <div className="auth-actions">
+              <input
+                className="input"
+                type="password"
+                value={pendingOperatorToken}
+                onChange={(event) => setPendingOperatorToken(event.target.value)}
+                aria-label="Operator token"
+                autoComplete="off"
+                placeholder={operatorToken ? "Update operator token" : "Paste operator token"}
+              />
+              <button
+                className="button"
+                type="button"
+                onClick={saveOperatorToken}
+                disabled={!pendingOperatorToken.trim()}
+              >
+                Save Token
+              </button>
+              <button
+                className="button secondary icon-button"
+                type="button"
+                onClick={clearOperatorToken}
+                disabled={!operatorToken && !pendingOperatorToken.trim()}
+                aria-label="Clear operator token"
+                title="Clear operator token"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
         )}
 
