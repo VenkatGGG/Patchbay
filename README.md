@@ -49,6 +49,22 @@ Prerequisites:
 The local prototype can run without a real Tailscale tailnet while the
 integration boundary is developed.
 
+### Gemini API Key
+
+The app reads local secrets from:
+
+```text
+apps/web/.env.local
+```
+
+When you have the key, set:
+
+```text
+GEMINI_API_KEY=<your-key>
+```
+
+Do not commit `.env.local`; it is ignored by Git.
+
 ### Local Postgres
 
 ```bash
@@ -68,6 +84,20 @@ Run the self-hosted web stack:
 ```bash
 docker compose up --build
 ```
+
+### Tests
+
+```bash
+pnpm check
+```
+
+`pnpm check` runs:
+
+- Next.js typecheck.
+- Next.js production build.
+- Go agent tests.
+- End-to-end integration smoke test with signed enrollment, agent diagnostics,
+  and offline Gemini synthesis.
 
 ### Agent Enrollment Tokens
 

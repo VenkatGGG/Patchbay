@@ -10,6 +10,7 @@
     "db:migrate": "pnpm --filter @patchbay/web db:migrate",
     "agent:test": "go test ./agent/...",
     "agent:run": "go run ./agent/cmd/patchbay-agent",
-    "check": "pnpm web:typecheck && pnpm web:build && pnpm agent:test"
+    "test:integration": "node scripts/integration/smoke.mjs",
+    "check": "pnpm web:typecheck && pnpm web:build && pnpm agent:test && pnpm test:integration"
   }
 }
