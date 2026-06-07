@@ -115,8 +115,9 @@ pnpm check
 - Next.js typecheck.
 - Next.js production build.
 - Go agent tests.
-- End-to-end integration smoke test with operator auth, signed enrollment, agent
-  diagnostics, report export, and offline Gemini synthesis.
+- End-to-end integration smoke test with operator auth, signed enrollment,
+  signed agent API tokens, agent diagnostics, report export, and offline Gemini
+  synthesis.
 
 Run the same end-to-end test against Postgres:
 
@@ -147,6 +148,20 @@ Run an agent with the token:
 
 ```bash
 PATCHBAY_ENROLLMENT_TOKEN=<token> pnpm agent:run
+```
+
+### Agent API Tokens
+
+Enrollment tokens are used only to enroll an agent. After enrollment, the
+control plane returns a signed agent API token and the Go agent uses it for task
+polling and event uploads.
+
+For local development, post-enrollment agent tokens are optional by default. To
+require them:
+
+```bash
+PATCHBAY_REQUIRE_AGENT_TOKEN=true
+PATCHBAY_AGENT_AUTH_SECRET=<strong-random-secret>
 ```
 
 ### Optional Tailscale Bootstrap

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { agentAuthStatus } from "@/lib/agent-auth";
 import { listLLMProviders } from "@/lib/llm";
 import { operatorAuthStatus } from "@/lib/operator-auth";
 import { getStoreRuntime, store } from "@/lib/store";
@@ -12,6 +13,7 @@ export async function GET() {
         status: "ready",
         service: "patchbay",
         timestamp: new Date().toISOString(),
+        agentAuth: agentAuthStatus(),
         operatorAuth: operatorAuthStatus(),
         runtime: getStoreRuntime(),
         counts: {

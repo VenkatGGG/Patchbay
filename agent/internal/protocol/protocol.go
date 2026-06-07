@@ -31,8 +31,9 @@ type EnrollRequest struct {
 }
 
 type EnrollResponse struct {
-	Agent     Agent          `json:"agent"`
-	Tailscale TailscaleReply `json:"tailscale"`
+	Agent      Agent          `json:"agent"`
+	AgentToken string         `json:"agentToken,omitempty"`
+	Tailscale  TailscaleReply `json:"tailscale"`
 }
 
 type TailscaleReply struct {

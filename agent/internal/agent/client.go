@@ -15,6 +15,7 @@ import (
 type Client struct {
 	baseURL         string
 	enrollmentToken string
+	agentToken      string
 	httpClient      *http.Client
 }
 
@@ -30,9 +31,10 @@ func NewClient(baseURL string, enrollmentToken string) *Client {
 
 func (client *Client) Enroll(ctx context.Context, request protocol.EnrollRequest) (protocol.EnrollResponse, error) {
 	var response protocol.EnrollResponse
-	if err := client.post(ctx, "/api/agent/enroll", request, &response); err != nil {
+	if err := client.post(ctx, "/api/agent/enroll", request, &response, client.enrollmentToken); err != nil {
 		return protocol.EnrollResponse{}, err
 	}
+	client.agentToken = response.AgentToken
 	return response, nil
 }
 
@@ -42,7 +44,7 @@ func (client *Client) PollTasks(ctx context.Context, agentID string) ([]protocol
 	if err != nil {
 		return nil, err
 	}
-	client.authorize(request)
+	authorize(request, client.agentToken)
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
@@ -62,10 +64,10 @@ func (client *Client) PollTasks(ctx context.Context, agentID string) ([]protocol
 }
 
 func (client *Client) SendTaskEvent(ctx context.Context, taskID string, event protocol.TaskEvent) error {
-	return client.post(ctx, fmt.Sprintf("/api/agent/tasks/%s/events", taskID), event, nil)
+	return client.post(ctx, fmt.Sprintf("/api/agent/tasks/%s/events", taskID), event, nil, client.agentToken)
 }
 
-func (client *Client) post(ctx context.Context, path string, requestPayload any, responsePayload any) error {
+func (client *Client) post(ctx context.Context, path string, requestPayload any, responsePayload any, authToken string) error {
 	body, err := json.Marshal(requestPayload)
 	if err != nil {
 		return err
@@ -76,7 +78,7 @@ func (client *Client) post(ctx context.Context, path string, requestPayload any,
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	client.authorize(request)
+	authorize(request, authToken)
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
@@ -97,8 +99,8 @@ func (client *Client) post(ctx context.Context, path string, requestPayload any,
 	return nil
 }
 
-func (client *Client) authorize(request *http.Request) {
-	if client.enrollmentToken != "" {
-		request.Header.Set("Authorization", "Bearer "+client.enrollmentToken)
+func authorize(request *http.Request, token string) {
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
 	}
 }

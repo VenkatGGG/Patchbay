@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { verifyAgentAuthorization } from "@/lib/agent-auth";
 import { store } from "@/lib/store";
 
 const eventSchema = z.object({
@@ -18,6 +19,14 @@ export async function POST(
 ) {
   const { taskId } = await context.params;
   const body = eventSchema.parse(await request.json());
+  const agentAuth = verifyAgentAuthorization(
+    request.headers.get("authorization"),
+    body.agentId
+  );
+  if (!agentAuth.ok) {
+    return NextResponse.json({ error: agentAuth.reason }, { status: 401 });
+  }
+
   const event = await store.addTaskEvent(taskId, body);
   return NextResponse.json(event, { status: 201 });
 }

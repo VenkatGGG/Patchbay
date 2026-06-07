@@ -27,6 +27,8 @@ async function main() {
       PATCHBAY_STORAGE: storageMode,
       DATABASE_URL: databaseUrl ?? "",
       GEMINI_API_KEY: "",
+      PATCHBAY_REQUIRE_AGENT_TOKEN: "true",
+      PATCHBAY_AGENT_AUTH_SECRET: "integration-agent-auth-secret",
       PATCHBAY_LLM_PROVIDER: "gemini",
       PATCHBAY_OPERATOR_TOKEN: operatorToken
     }
@@ -48,6 +50,10 @@ async function main() {
     ready.operatorAuth.required === true,
     "expected readiness endpoint to report operator auth enabled"
   );
+  assert(
+    ready.agentAuth.required === true,
+    "expected readiness endpoint to report agent auth enabled"
+  );
 
   await expectStatus(
     "unauthenticated state is rejected",
@@ -68,6 +74,22 @@ async function main() {
       name: "rejected-agent",
       version: "test",
       capabilities: ["system.info"]
+    }),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated agent task polling is rejected",
+    getResponse("/api/agent/tasks?agentId=agt_missing"),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated agent event posting is rejected",
+    postJson("/api/agent/tasks/task_missing/events", {
+      agentId: "agt_missing",
+      level: "info",
+      message: "should be rejected"
     }),
     401
   );

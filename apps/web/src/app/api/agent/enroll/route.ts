@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { createAgentToken } from "@/lib/agent-auth";
 import {
   enrollmentTokenFromAuthorization,
   verifyEnrollmentToken
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       agent,
+      agentToken: createAgentToken(agent.id, agent.environmentId),
       tailscale: {
         available: authKey.available,
         authKey: authKey.key,
