@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAgentAuthorization } from "@/lib/agent-auth";
+import { domainErrorResponse } from "@/lib/api-validation";
 import { store } from "@/lib/store";
 
 export async function GET(request: NextRequest) {
@@ -16,6 +17,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: agentAuth.reason }, { status: 401 });
   }
 
-  const tasks = await store.claimTasks(agentId);
-  return NextResponse.json(tasks);
+  try {
+    const tasks = await store.claimTasks(agentId);
+    return NextResponse.json(tasks);
+  } catch (error) {
+    const response = domainErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
 }

@@ -118,6 +118,20 @@ async function main() {
     401
   );
 
+  const missingAgentToken = createSignedAgentToken({
+    agentId: "agt_missing_signed",
+    environmentId: "env_local",
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  });
+  await expectStatus(
+    "unknown agent task polling is rejected",
+    getResponse("/api/agent/tasks?agentId=agt_missing_signed", {
+      Authorization: `Bearer ${missingAgentToken}`
+    }),
+    404
+  );
+
   await expectStatus(
     "unauthenticated agent event posting is rejected",
     postJson("/api/agent/tasks/task_missing/events", {
@@ -159,6 +173,20 @@ async function main() {
   );
 
   await expectStatus(
+    "unknown environment session creation is rejected",
+    postJson(
+      "/api/sessions",
+      {
+        environmentId: "env_missing",
+        name: "missing environment",
+        ttlMinutes: 30
+      },
+      operatorHeaders()
+    ),
+    404
+  );
+
+  await expectStatus(
     "oversized enrollment token ttl is rejected",
     postJson(
       "/api/environments/env_local/enrollment-token",
@@ -184,6 +212,25 @@ async function main() {
   assert(
     Date.parse(tokenResponse.body.expiresAt) > Date.now(),
     "expected minted enrollment token expiry to be in the future"
+  );
+
+  const missingEnvironmentToken = createSignedEnrollmentToken({
+    environmentId: "env_missing",
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  });
+  await expectStatus(
+    "unknown environment enrollment is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_missing",
+        name: "integration-missing-env-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(missingEnvironmentToken)
+    ),
+    404
   );
 
   await expectStatus(
@@ -311,6 +358,16 @@ async function main() {
   assert(sessionResponse.status === 201, "expected session creation to return 201");
   const sessionId = sessionResponse.body.id;
   assert(sessionId, "expected session id");
+
+  await expectStatus(
+    "unknown session diagnostic request is rejected",
+    postJson(
+      "/api/sessions/sess_missing/diagnostics",
+      { scenario: "latency_spike" },
+      operatorHeaders()
+    ),
+    409
+  );
 
   await expectStatus(
     "invalid diagnostic request is rejected",

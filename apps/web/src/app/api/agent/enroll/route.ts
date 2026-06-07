@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAgentTokenEnvelope } from "@/lib/agent-auth";
-import { parseJsonBody } from "@/lib/api-validation";
+import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
 import {
   enrollmentTokenFromAuthorization,
   verifyEnrollmentToken
@@ -43,16 +43,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const state = await store.snapshot();
+  if (!state.environments.some((environment) => environment.id === body.environmentId)) {
+    return NextResponse.json(
+      { error: `Unknown environment: ${body.environmentId}` },
+      { status: 404 }
+    );
+  }
+
+  let agent;
   const authKey = await createAgentAuthKey(body.environmentId);
-  const agent = await store.enrollAgent({
-    ...body,
-    tailscale: {
-      ...body.tailscale,
-      enabled: body.tailscale?.enabled ?? authKey.available,
-      tags: body.tailscale?.tags ?? authKey.tags,
-      authKeyPreview: authKey.preview
-    }
-  });
+  try {
+    agent = await store.enrollAgent({
+      ...body,
+      tailscale: {
+        ...body.tailscale,
+        enabled: body.tailscale?.enabled ?? authKey.available,
+        tags: body.tailscale?.tags ?? authKey.tags,
+        authKeyPreview: authKey.preview
+      }
+    });
+  } catch (error) {
+    const response = domainErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
   const agentToken = createAgentTokenEnvelope(agent.id, agent.environmentId);
 
   return NextResponse.json(

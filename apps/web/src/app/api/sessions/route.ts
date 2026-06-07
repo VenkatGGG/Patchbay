@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { parseJsonBody } from "@/lib/api-validation";
+import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
@@ -26,6 +26,12 @@ export async function POST(request: NextRequest) {
   if (!parsed.ok) return parsed.response;
 
   const body = parsed.data;
-  const session = await store.createSession(body);
-  return NextResponse.json(session, { status: 201 });
+  try {
+    const session = await store.createSession(body);
+    return NextResponse.json(session, { status: 201 });
+  } catch (error) {
+    const response = domainErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
 }

@@ -31,3 +31,23 @@ export async function parseJsonBody<T>(
     )
   };
 }
+
+export function domainErrorResponse(error: unknown) {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  if (
+    error.message.startsWith("Unknown environment:") ||
+    error.message.startsWith("Unknown agent:") ||
+    error.message.startsWith("Unknown task:")
+  ) {
+    return NextResponse.json({ error: error.message }, { status: 404 });
+  }
+
+  if (error.message === "Session is not active") {
+    return NextResponse.json({ error: error.message }, { status: 409 });
+  }
+
+  return undefined;
+}
