@@ -62,5 +62,4 @@ jobs:
         run: pnpm test:integration:postgres
 
       - name: Validate compose file
-        run: docker compose config
-
+        run: docker compose config --quiet --no-env-resolution

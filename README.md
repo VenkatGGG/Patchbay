@@ -110,8 +110,15 @@ postgres://patchbay:patchbay@localhost:5432/patchbay
 Run the self-hosted web stack:
 
 ```bash
+pnpm env:local
 docker compose up --build
 ```
+
+The compose stack reads `apps/web/.env.local` as an optional secret envelope and
+overrides `DATABASE_URL` for the in-network Postgres service. If you deploy from
+a shell or CI secret store instead, export the same variables before running
+compose. The tracked compose defaults require signed enrollment and signed agent
+API tokens.
 
 ### Tests
 
