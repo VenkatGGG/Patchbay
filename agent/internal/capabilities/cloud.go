@@ -5,12 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
-const metadataBaseURL = "http://169.254.169.254"
+const (
+	metadataBaseURL              = "http://169.254.169.254"
+	metadataBaseURLOverrideEnv   = "PATCHBAY_ALLOW_METADATA_BASE_URL_OVERRIDE"
+	metadataBaseURLOverrideParam = "baseUrl"
+)
 
 type cloudProbe func(context.Context, *http.Client, string) (map[string]string, bool, error)
 
@@ -25,6 +32,7 @@ func cloudMetadata(ctx context.Context, params map[string]any) (any, error) {
 
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 	client := &http.Client{Timeout: timeout}
+	baseURL := metadataBaseURLForParams(params)
 	probes := map[string]string{}
 	providers := []struct {
 		name  string
@@ -37,7 +45,7 @@ func cloudMetadata(ctx context.Context, params map[string]any) (any, error) {
 
 	for _, provider := range providers {
 		probeCtx, cancel := context.WithTimeout(ctx, timeout)
-		metadata, matched, err := provider.probe(probeCtx, client, metadataBaseURL)
+		metadata, matched, err := provider.probe(probeCtx, client, baseURL)
 		cancel()
 
 		if matched {
@@ -64,6 +72,45 @@ func cloudMetadata(ctx context.Context, params map[string]any) (any, error) {
 		"probes":    probes,
 		"timeoutMs": timeoutMs,
 	}, nil
+}
+
+func metadataBaseURLForParams(params map[string]any) string {
+	if os.Getenv(metadataBaseURLOverrideEnv) != "true" {
+		return metadataBaseURL
+	}
+
+	baseURL, ok := params[metadataBaseURLOverrideParam].(string)
+	if !ok {
+		return metadataBaseURL
+	}
+
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return metadataBaseURL
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return metadataBaseURL
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return metadataBaseURL
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return metadataBaseURL
+	}
+	if !isLoopbackHost(parsed.Hostname()) {
+		return metadataBaseURL
+	}
+
+	parsed.Path = ""
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func probeAWSMetadata(ctx context.Context, client *http.Client, baseURL string) (map[string]string, bool, error) {
