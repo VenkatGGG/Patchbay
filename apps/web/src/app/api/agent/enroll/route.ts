@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  enrollmentTokenFromAuthorization,
+  verifyEnrollmentToken
+} from "@/lib/enrollment-token";
 import { createAgentAuthKey } from "@/lib/tailscale";
 import { store } from "@/lib/store";
 import { READ_ONLY_CAPABILITIES } from "@/lib/types";
@@ -22,6 +26,18 @@ const enrollSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const body = enrollSchema.parse(await request.json());
+  const verification = verifyEnrollmentToken(
+    enrollmentTokenFromAuthorization(request.headers.get("authorization")),
+    body.environmentId
+  );
+
+  if (!verification.ok) {
+    return NextResponse.json(
+      { error: verification.reason ?? "Enrollment token rejected" },
+      { status: 401 }
+    );
+  }
+
   const authKey = await createAgentAuthKey(body.environmentId);
   const agent = await store.enrollAgent({
     ...body,

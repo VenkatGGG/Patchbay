@@ -62,3 +62,26 @@ The default local database URL is:
 ```text
 postgres://patchbay:patchbay@localhost:5432/patchbay
 ```
+
+### Agent Enrollment Tokens
+
+For local development, enrollment tokens are optional by default. To require
+signed environment-scoped tokens:
+
+```bash
+PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true
+```
+
+Mint a token:
+
+```bash
+curl -X POST http://localhost:3000/api/environments/env_local/enrollment-token \
+  -H "content-type: application/json" \
+  -d '{"ttlMinutes":60}'
+```
+
+Run an agent with the token:
+
+```bash
+PATCHBAY_ENROLLMENT_TOKEN=<token> pnpm agent:run
+```

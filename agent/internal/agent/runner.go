@@ -11,7 +11,7 @@ import (
 )
 
 func Run(ctx context.Context, config Config, logger *slog.Logger) error {
-	client := NewClient(config.ControlPlaneURL)
+	client := NewClient(config.ControlPlaneURL, config.EnrollmentToken)
 	registry := capabilities.NewRegistry()
 	tailscaleState := tailscale.Detect(ctx)
 

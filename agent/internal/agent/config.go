@@ -13,6 +13,7 @@ type Config struct {
 	ControlPlaneURL string
 	EnvironmentID   string
 	Name            string
+	EnrollmentToken string
 	PollInterval    time.Duration
 }
 
@@ -23,6 +24,7 @@ func ConfigFromEnv() (Config, error) {
 		ControlPlaneURL: strings.TrimRight(getenv("PATCHBAY_CONTROL_PLANE_URL", "http://localhost:3000"), "/"),
 		EnvironmentID:   getenv("PATCHBAY_ENVIRONMENT_ID", "env_local"),
 		Name:            getenv("PATCHBAY_AGENT_NAME", hostname),
+		EnrollmentToken: getenv("PATCHBAY_ENROLLMENT_TOKEN", ""),
 	}
 
 	if config.Name == "" {

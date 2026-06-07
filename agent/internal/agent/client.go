@@ -13,13 +13,15 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL         string
+	enrollmentToken string
+	httpClient      *http.Client
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, enrollmentToken string) *Client {
 	return &Client{
-		baseURL: baseURL,
+		baseURL:         baseURL,
+		enrollmentToken: enrollmentToken,
 		httpClient: &http.Client{
 			Timeout: 20 * time.Second,
 		},
@@ -40,6 +42,7 @@ func (client *Client) PollTasks(ctx context.Context, agentID string) ([]protocol
 	if err != nil {
 		return nil, err
 	}
+	client.authorize(request)
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
@@ -73,6 +76,7 @@ func (client *Client) post(ctx context.Context, path string, requestPayload any,
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	client.authorize(request)
 
 	response, err := client.httpClient.Do(request)
 	if err != nil {
@@ -91,4 +95,10 @@ func (client *Client) post(ctx context.Context, path string, requestPayload any,
 	}
 
 	return nil
+}
+
+func (client *Client) authorize(request *http.Request) {
+	if client.enrollmentToken != "" {
+		request.Header.Set("Authorization", "Bearer "+client.enrollmentToken)
+	}
 }
