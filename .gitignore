@@ -12,6 +12,7 @@ apps/web/next-env.d.ts
 
 # Go
 bin/
+agent/bin/
 *.test
 
 # Environment

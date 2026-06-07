@@ -69,6 +69,9 @@ before accepting status or result updates.
 ## Agent
 
 The agent is a Go process deployed inside each target environment.
+The default verification gate compiles the command into
+`agent/bin/patchbay-agent` so deployment packaging is checked alongside unit and
+integration tests.
 
 Responsibilities:
 

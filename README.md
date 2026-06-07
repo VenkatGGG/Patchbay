@@ -227,6 +227,16 @@ Run an agent with the token:
 PATCHBAY_ENROLLMENT_TOKEN=<token> pnpm agent:run
 ```
 
+Build a deployable local agent binary:
+
+```bash
+pnpm agent:build
+PATCHBAY_ENROLLMENT_TOKEN=<token> ./agent/bin/patchbay-agent
+```
+
+`pnpm check` compiles this binary with `go build -trimpath` so CI catches agent
+packaging regressions, not just unit-test regressions.
+
 ### Agent API Tokens
 
 Enrollment tokens are used only to enroll an agent. After enrollment, the
