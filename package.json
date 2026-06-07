@@ -18,8 +18,9 @@
     "test:ui": "node scripts/integration/ui-smoke.mjs",
     "test:integration": "node scripts/integration/smoke.mjs",
     "test:integration:postgres": "PATCHBAY_INTEGRATION_STORAGE=postgres node scripts/integration/smoke.mjs",
+    "test:llm:fallback": "node scripts/integration/llm-fallback.mjs",
     "test:gemini:live": "node scripts/integration/live-gemini.mjs",
     "test:tailscale:live": "node scripts/integration/live-tailscale.mjs",
-    "check": "pnpm test:secrets && pnpm test:env && pnpm test:compose && pnpm web:typecheck && pnpm web:build && pnpm test:ui && pnpm agent:test && pnpm test:integration"
+    "check": "pnpm test:secrets && pnpm test:env && pnpm test:compose && pnpm web:typecheck && pnpm web:build && pnpm test:ui && pnpm agent:test && pnpm test:integration && pnpm test:llm:fallback"
   }
 }

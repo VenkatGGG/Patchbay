@@ -161,6 +161,10 @@ synthesis returns the live `gemini:<model>` provider instead of the offline
 fallback. The command is intentionally not part of `pnpm check` because it calls
 the external Gemini API.
 
+Gemini calls are bounded by `GEMINI_TIMEOUT_MS` (default `30000`) and fall back
+to an offline synthesis if the provider is unavailable. The live validation still
+fails unless the response comes from the live `gemini:<model>` provider.
+
 After `TAILSCALE_TAILNET`, `TAILSCALE_OAUTH_CLIENT_ID`, and
 `TAILSCALE_OAUTH_CLIENT_SECRET` are present in `apps/web/.env.local`, validate
 the live Tailscale path:

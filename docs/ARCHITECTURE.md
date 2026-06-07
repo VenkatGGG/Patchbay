@@ -175,3 +175,6 @@ LLMProvider
 ```
 
 The fallback provider must stay available for local development and tests.
+Configured providers should also fail closed to an offline synthesis when a
+provider call times out or errors; live validation remains strict by requiring
+the exact live provider label.
