@@ -171,6 +171,41 @@ button {
   background: var(--red-soft);
 }
 
+.auth-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 360px) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.auth-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.auth-copy strong,
+.auth-copy span {
+  display: block;
+}
+
+.auth-copy strong {
+  font-size: 13px;
+}
+
+.auth-copy span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .topbar h2 {
   margin: 0;
   font-size: 24px;
@@ -535,7 +570,8 @@ button {
   }
 
   .toolbar,
-  .form-row {
+  .form-row,
+  .auth-panel {
     width: 100%;
     grid-template-columns: 1fr;
     flex-wrap: wrap;

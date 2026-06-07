@@ -65,6 +65,24 @@ GEMINI_API_KEY=<your-key>
 
 Do not commit `.env.local`; it is ignored by Git.
 
+### Operator Token
+
+Local development stays open when `PATCHBAY_OPERATOR_TOKEN` is empty. Set it for
+shared or production-like deployments to require a bearer token on operator
+control-plane APIs and the dashboard:
+
+```text
+PATCHBAY_OPERATOR_TOKEN=<strong-random-token>
+```
+
+The dashboard prompts for this token and stores it in local browser storage.
+CLI calls can pass it with:
+
+```bash
+curl http://localhost:3000/api/state \
+  -H "authorization: Bearer $PATCHBAY_OPERATOR_TOKEN"
+```
+
 ### Local Postgres
 
 ```bash
@@ -97,8 +115,8 @@ pnpm check
 - Next.js typecheck.
 - Next.js production build.
 - Go agent tests.
-- End-to-end integration smoke test with signed enrollment, agent diagnostics,
-  and offline Gemini synthesis.
+- End-to-end integration smoke test with operator auth, signed enrollment, agent
+  diagnostics, report export, and offline Gemini synthesis.
 
 Run the same end-to-end test against Postgres:
 
@@ -120,6 +138,7 @@ Mint a token:
 
 ```bash
 curl -X POST http://localhost:3000/api/environments/env_local/enrollment-token \
+  -H "authorization: Bearer $PATCHBAY_OPERATOR_TOKEN" \
   -H "content-type: application/json" \
   -d '{"ttlMinutes":60}'
 ```

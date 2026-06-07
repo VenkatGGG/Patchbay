@@ -30,8 +30,11 @@ export function ControlPlaneDashboard() {
   const [sessionName, setSessionName] = useState("checkout latency investigation");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [busyAction, setBusyAction] = useState<
-    "refresh" | "session" | "diagnostic" | "synthesis" | null
+    "refresh" | "session" | "diagnostic" | "synthesis" | "report" | null
   >(null);
+  const [operatorToken, setOperatorToken] = useState("");
+  const [pendingOperatorToken, setPendingOperatorToken] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
   const [notice, setNotice] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -66,14 +69,36 @@ export function ControlPlaneDashboard() {
       : Math.round((taskSummary.completed / selectedTasks.length) * 100);
   const onlineAgents = state.agents.filter((agent) => agent.status === "online").length;
 
+  async function fetchControlPlane(input: RequestInfo | URL, init: RequestInit = {}) {
+    const headers = new Headers(init.headers);
+    const trimmedToken = operatorToken.trim();
+
+    if (trimmedToken) {
+      headers.set("Authorization", `Bearer ${trimmedToken}`);
+    }
+
+    const response = await fetch(input, {
+      ...init,
+      headers
+    });
+
+    if (response.status === 401) {
+      setAuthRequired(true);
+      throw new Error("Operator token required");
+    }
+
+    return response;
+  }
+
   async function refresh() {
     setBusyAction("refresh");
     try {
-      const response = await fetch("/api/state", { cache: "no-store" });
+      const response = await fetchControlPlane("/api/state", { cache: "no-store" });
       if (!response.ok) {
         throw new Error(`State refresh failed with ${response.status}`);
       }
       setState(await response.json());
+      setAuthRequired(false);
       setError("");
     } catch (caught) {
       setError(messageFrom(caught));
@@ -86,7 +111,7 @@ export function ControlPlaneDashboard() {
     if (!selectedEnvironment) return;
     setBusyAction("session");
     try {
-      const response = await fetch("/api/sessions", {
+      const response = await fetchControlPlane("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,11 +140,14 @@ export function ControlPlaneDashboard() {
     if (!selectedSession) return;
     setBusyAction("diagnostic");
     try {
-      const response = await fetch(`/api/sessions/${selectedSession.id}/diagnostics`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario: "latency_spike" })
-      });
+      const response = await fetchControlPlane(
+        `/api/sessions/${selectedSession.id}/diagnostics`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scenario: "latency_spike" })
+        }
+      );
       if (!response.ok) {
         throw new Error(`Diagnostic run failed with ${response.status}`);
       }
@@ -138,9 +166,12 @@ export function ControlPlaneDashboard() {
     if (!selectedSession) return;
     setBusyAction("synthesis");
     try {
-      const response = await fetch(`/api/sessions/${selectedSession.id}/synthesize`, {
-        method: "POST"
-      });
+      const response = await fetchControlPlane(
+        `/api/sessions/${selectedSession.id}/synthesize`,
+        {
+          method: "POST"
+        }
+      );
       if (!response.ok) {
         throw new Error(`Synthesis failed with ${response.status}`);
       }
@@ -154,23 +185,59 @@ export function ControlPlaneDashboard() {
     }
   }
 
-  function exportReport() {
+  async function exportReport() {
     if (!selectedSession) return;
+    setBusyAction("report");
 
-    window.open(
-      `/api/sessions/${selectedSession.id}/report`,
-      "_blank",
-      "noopener,noreferrer"
-    );
-    setNotice(`Opened report for ${selectedSession.name}`);
+    try {
+      const response = await fetchControlPlane(
+        `/api/sessions/${selectedSession.id}/report`,
+        {
+          headers: {
+            Accept: "text/markdown"
+          }
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Report export failed with ${response.status}`);
+      }
+
+      const reportUrl = window.URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = reportUrl;
+      link.download = `${selectedSession.id}.md`;
+      link.click();
+      window.URL.revokeObjectURL(reportUrl);
+
+      setNotice(`Downloaded report for ${selectedSession.name}`);
+      setError("");
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  function saveOperatorToken() {
+    const nextToken = pendingOperatorToken.trim();
+    window.localStorage.setItem("patchbay.operatorToken", nextToken);
+    setOperatorToken(nextToken);
+    setAuthRequired(false);
+    setNotice("Operator token saved");
     setError("");
   }
+
+  useEffect(() => {
+    const savedToken = window.localStorage.getItem("patchbay.operatorToken") ?? "";
+    setOperatorToken(savedToken);
+    setPendingOperatorToken(savedToken);
+  }, []);
 
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 4000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [operatorToken]);
 
   return (
     <main className="shell">
@@ -244,7 +311,7 @@ export function ControlPlaneDashboard() {
               disabled={!selectedSession || busyAction !== null}
             >
               <FileDown size={16} />
-              Export Report
+              {busyAction === "report" ? "Exporting" : "Export Report"}
             </button>
           </div>
         </div>
@@ -252,6 +319,34 @@ export function ControlPlaneDashboard() {
         {(error || notice) && (
           <div className={`banner ${error ? "error" : "info"}`} role="status">
             {error || notice}
+          </div>
+        )}
+
+        {authRequired && (
+          <div className="auth-panel" role="form" aria-label="Operator token">
+            <div className="auth-copy">
+              <ShieldCheck size={17} />
+              <div>
+                <strong>Operator token required</strong>
+                <span>Use the token configured in PATCHBAY_OPERATOR_TOKEN.</span>
+              </div>
+            </div>
+            <input
+              className="input"
+              type="password"
+              value={pendingOperatorToken}
+              onChange={(event) => setPendingOperatorToken(event.target.value)}
+              aria-label="Operator token"
+              autoComplete="off"
+            />
+            <button
+              className="button"
+              type="button"
+              onClick={saveOperatorToken}
+              disabled={!pendingOperatorToken.trim()}
+            >
+              Save Token
+            </button>
           </div>
         )}
 

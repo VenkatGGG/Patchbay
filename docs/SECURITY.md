@@ -36,6 +36,7 @@ Network layer:
 
 Control plane:
 
+- Optional operator bearer token for dashboard and human-operated APIs.
 - Session expiration.
 - Capability allowlists.
 - Task audit log.
@@ -64,6 +65,8 @@ Minimum requirements:
 
 - Redact common token patterns before evidence leaves the agent.
 - Never send raw secrets to Gemini.
+- Keep `GEMINI_API_KEY` and `PATCHBAY_OPERATOR_TOKEN` in ignored local or
+  deployment secret stores.
 - Keep artifact retention configurable.
 - Make persistence optional for self-hosted deployments.
 
@@ -76,4 +79,3 @@ Initial redaction targets:
 - Bearer tokens
 - Kubernetes service account tokens
 - Private key blocks
-

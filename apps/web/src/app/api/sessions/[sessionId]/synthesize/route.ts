@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { synthesizeSession } from "@/lib/llm";
+import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   context: { params: Promise<{ sessionId: string }> }
 ) {
+  const unauthorized = requireOperator(request);
+  if (unauthorized) return unauthorized;
+
   const { sessionId } = await context.params;
   const session = await store.getSession(sessionId);
 

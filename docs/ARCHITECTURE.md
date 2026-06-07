@@ -47,9 +47,15 @@ Responsibilities:
 - Audit log.
 - LLM provider abstraction.
 - Tailscale automation boundary.
+- Operator authentication for dashboard and human API access.
 
 For v0, the control plane can use an in-memory store for local development. The
 data model should stay close to what a later Postgres implementation needs.
+
+Operator authentication is disabled when `PATCHBAY_OPERATOR_TOKEN` is empty so a
+single developer can run the local prototype quickly. When the token is set,
+dashboard and operator API requests must send it as a bearer token. Agent
+enrollment and task polling remain on their own protocol path.
 
 ## Agent
 

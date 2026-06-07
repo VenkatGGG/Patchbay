@@ -8,6 +8,8 @@ const port = Number(process.env.PATCHBAY_INTEGRATION_PORT ?? 3100);
 const baseUrl = `http://127.0.0.1:${port}`;
 const storageMode = process.env.PATCHBAY_INTEGRATION_STORAGE ?? "memory";
 const databaseUrl = process.env.PATCHBAY_INTEGRATION_DATABASE_URL ?? process.env.DATABASE_URL;
+const operatorToken =
+  process.env.PATCHBAY_INTEGRATION_OPERATOR_TOKEN ?? "integration-operator-token";
 const children = [];
 
 async function main() {
@@ -25,12 +27,13 @@ async function main() {
       PATCHBAY_STORAGE: storageMode,
       DATABASE_URL: databaseUrl ?? "",
       GEMINI_API_KEY: "",
-      PATCHBAY_LLM_PROVIDER: "gemini"
+      PATCHBAY_LLM_PROVIDER: "gemini",
+      PATCHBAY_OPERATOR_TOKEN: operatorToken
     }
   );
   children.push(web);
 
-  await waitForJson("/api/state");
+  await waitForJson("/api/health");
 
   const health = await getJson("/api/health");
   assert(health.status === "ok", "expected health endpoint to report ok");
@@ -40,6 +43,22 @@ async function main() {
   assert(
     ready.runtime.storage === storageMode,
     `expected readiness storage ${storageMode}, got ${ready.runtime.storage}`
+  );
+  assert(
+    ready.operatorAuth.required === true,
+    "expected readiness endpoint to report operator auth enabled"
+  );
+
+  await expectStatus(
+    "unauthenticated state is rejected",
+    getResponse("/api/state"),
+    401
+  );
+
+  await expectStatus(
+    "unauthenticated token minting is rejected",
+    postJson("/api/environments/env_local/enrollment-token", { ttlMinutes: 15 }),
+    401
   );
 
   await expectStatus(
@@ -53,9 +72,13 @@ async function main() {
     401
   );
 
-  const tokenResponse = await postJson("/api/environments/env_local/enrollment-token", {
-    ttlMinutes: 15
-  });
+  const tokenResponse = await postJson(
+    "/api/environments/env_local/enrollment-token",
+    {
+      ttlMinutes: 15
+    },
+    operatorHeaders()
+  );
   assert(tokenResponse.status === 200, "expected token mint endpoint to return 200");
   assert(tokenResponse.body.token, "expected enrollment token");
 
@@ -73,34 +96,43 @@ async function main() {
   children.push(agent);
 
   await waitForCondition("agent enrollment", async () => {
-    const state = await getJson("/api/state");
+    const state = await getJson("/api/state", operatorHeaders());
     return state.agents.some((candidate) => candidate.name === "integration-agent");
   });
 
-  const sessionResponse = await postJson("/api/sessions", {
-    environmentId: "env_local",
-    name: "integration latency session",
-    requestedBy: "integration-test",
-    ttlMinutes: 30
-  });
+  const sessionResponse = await postJson(
+    "/api/sessions",
+    {
+      environmentId: "env_local",
+      name: "integration latency session",
+      requestedBy: "integration-test",
+      ttlMinutes: 30
+    },
+    operatorHeaders()
+  );
   assert(sessionResponse.status === 201, "expected session creation to return 201");
   const sessionId = sessionResponse.body.id;
   assert(sessionId, "expected session id");
 
   const diagnosticResponse = await postJson(
     `/api/sessions/${sessionId}/diagnostics`,
-    { scenario: "latency_spike" }
+    { scenario: "latency_spike" },
+    operatorHeaders()
   );
   assert(diagnosticResponse.status === 201, "expected diagnostics creation to return 201");
   assert(diagnosticResponse.body.length === 8, "expected all 8 read-only tasks");
 
   await waitForCondition("all diagnostic tasks to complete", async () => {
-    const state = await getJson("/api/state");
+    const state = await getJson("/api/state", operatorHeaders());
     const tasks = state.tasks.filter((task) => task.sessionId === sessionId);
     return tasks.length === 8 && tasks.every((task) => task.status === "completed");
   });
 
-  const synthesisResponse = await postJson(`/api/sessions/${sessionId}/synthesize`, {});
+  const synthesisResponse = await postJson(
+    `/api/sessions/${sessionId}/synthesize`,
+    {},
+    operatorHeaders()
+  );
   assert(synthesisResponse.status === 201, "expected synthesis to return 201");
   assert(
     synthesisResponse.body.provider === "gemini:offline",
@@ -111,7 +143,10 @@ async function main() {
     "expected synthesis summary to reference the session"
   );
 
-  const reportResponse = await getTextResponse(`/api/sessions/${sessionId}/report`);
+  const reportResponse = await getTextResponse(
+    `/api/sessions/${sessionId}/report`,
+    operatorHeaders()
+  );
   assert(reportResponse.status === 200, "expected report export to return 200");
   assert(
     reportResponse.headers.get("content-type")?.includes("text/markdown"),
@@ -130,14 +165,14 @@ async function main() {
     "expected report to include the offline Gemini synthesis provider"
   );
 
-  const providerResponse = await getResponse("/api/llm/providers");
+  const providerResponse = await getResponse("/api/llm/providers", operatorHeaders());
   assert(providerResponse.status === 200, "expected provider registry endpoint to return 200");
   assert(
     providerResponse.body.some((provider) => provider.id === "gemini"),
     "expected Gemini provider to be listed"
   );
 
-  const finalState = await getJson("/api/state");
+  const finalState = await getJson("/api/state", operatorHeaders());
   const finalTasks = finalState.tasks.filter((task) => task.sessionId === sessionId);
   console.log(
     JSON.stringify(
@@ -231,16 +266,17 @@ async function waitForCondition(label, check, timeoutMs = 30_000) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
-async function getJson(path) {
-  const response = await getResponse(path);
+async function getJson(path, headers = {}) {
+  const response = await getResponse(path, headers);
   assert(response.status >= 200 && response.status < 300, `GET ${path} returned ${response.status}`);
   return response.body;
 }
 
-async function getResponse(path) {
+async function getResponse(path, headers = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
-      accept: "application/json"
+      accept: "application/json",
+      ...headers
     }
   });
   return {
@@ -249,16 +285,23 @@ async function getResponse(path) {
   };
 }
 
-async function getTextResponse(path) {
+async function getTextResponse(path, headers = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: {
-      accept: "text/markdown"
+      accept: "text/markdown",
+      ...headers
     }
   });
   return {
     status: response.status,
     headers: response.headers,
     body: await response.text()
+  };
+}
+
+function operatorHeaders() {
+  return {
+    Authorization: `Bearer ${operatorToken}`
   };
 }
 
