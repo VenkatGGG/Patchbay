@@ -449,6 +449,76 @@ async function main() {
     "expected session close audit event"
   );
 
+  const expiringSessionResponse = await postJson(
+    "/api/sessions",
+    {
+      environmentId: "env_local",
+      name: "integration expiring session",
+      requestedBy: "integration-test",
+      ttlSeconds: 1
+    },
+    operatorHeaders()
+  );
+  assert(expiringSessionResponse.status === 201, "expected expiring session creation");
+  const expiringSessionId = expiringSessionResponse.body.id;
+  assert(expiringSessionId, "expected expiring session id");
+
+  const expiringDiagnosticResponse = await postJson(
+    `/api/sessions/${expiringSessionId}/diagnostics`,
+    { scenario: "latency_spike" },
+    operatorHeaders()
+  );
+  assert(
+    expiringDiagnosticResponse.status === 201,
+    "expected expiring diagnostic creation"
+  );
+  assert(
+    expiringDiagnosticResponse.body.length === 1,
+    `expected one queued expiring diagnostic task, got ${expiringDiagnosticResponse.body.length}`
+  );
+  const expiringTask = expiringDiagnosticResponse.body[0];
+  assert(expiringTask?.id, "expected expiring diagnostic task id");
+
+  await delay(1200);
+  const expiredState = await getJson("/api/state", operatorHeaders());
+  const expiredSession = expiredState.sessions.find(
+    (session) => session.id === expiringSessionId
+  );
+  assert(expiredSession?.status === "expired", "expected expired session in state");
+  const deniedExpiredTask = expiredState.tasks.find((task) => task.id === expiringTask.id);
+  assert(
+    deniedExpiredTask?.status === "denied",
+    "expected expired session task to be denied"
+  );
+  assert(
+    deniedExpiredTask.error === "Session expired",
+    "expected expired session task to record expiry reason"
+  );
+  assert(
+    expiredState.audit.some(
+      (event) => event.action === "session.expired" && event.target === expiringSessionId
+    ),
+    "expected session expiry audit event"
+  );
+
+  await expectStatus(
+    "late task event for expired session is rejected",
+    postJson(
+      `/api/agent/tasks/${expiringTask.id}/events`,
+      {
+        agentId: redactionAgentResponse.body.agent.id,
+        level: "info",
+        message: "Expired session event should be rejected",
+        status: "completed",
+        result: { ignored: true }
+      },
+      {
+        Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+      }
+    ),
+    409
+  );
+
   const agent = spawnProcess(
     "go",
     ["run", "./agent/cmd/patchbay-agent"],

@@ -225,6 +225,11 @@ Closing a session marks queued or running tasks as denied, records a
 `session.closed` audit event, prevents further diagnostic dispatch for that
 session, and rejects late agent task events.
 
+Expired sessions also mark queued or running tasks as denied, record a
+`session.expired` audit event, and reject late agent task events. The operator
+API accepts `ttlMinutes` for normal sessions and `ttlSeconds` for short-lived
+automation checks.
+
 Running diagnostics that exceed `PATCHBAY_TASK_TIMEOUT_SECONDS` are marked
 failed, emit a `task.timed_out` audit event, and reject late agent completion
 events. The default timeout is 300 seconds.

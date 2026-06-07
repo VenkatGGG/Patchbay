@@ -8,7 +8,8 @@ const createSessionSchema = z.object({
   environmentId: z.string().min(1),
   name: z.string().min(1),
   requestedBy: z.string().min(1).default("local-oncall"),
-  ttlMinutes: z.number().int().positive().max(240).default(30)
+  ttlMinutes: z.number().int().positive().max(240).optional(),
+  ttlSeconds: z.number().int().positive().max(24 * 60 * 60).optional()
 });
 
 export async function GET(request: NextRequest) {

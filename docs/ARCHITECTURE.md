@@ -138,6 +138,9 @@ Agents should reject work outside an active session.
 Operators can close active sessions early. Closing a session marks queued or
 running tasks as denied, records a `session.closed` audit event, stops future
 diagnostic dispatch for that session, and rejects late task event writes.
+Session expiry performs the same task denial and records a `session.expired`
+audit event, so expired sessions do not leave queued work in a nonterminal
+state.
 Running tasks also have a configurable timeout, defaulting to 300 seconds, so an
 agent crash cannot leave a diagnostic permanently `running`.
 

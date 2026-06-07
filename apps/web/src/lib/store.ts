@@ -30,6 +30,7 @@ type CreateSessionInput = {
   name: string;
   requestedBy: string;
   ttlMinutes?: number;
+  ttlSeconds?: number;
 };
 
 type AddTaskEventInput = {
@@ -183,7 +184,7 @@ class MemoryStore implements PatchbayStore {
     }
 
     const createdAt = new Date();
-    const ttlMinutes = input.ttlMinutes ?? 30;
+    const ttlSeconds = sessionTtlSeconds(input);
     const session: DebugSession = {
       id: makeId("sess"),
       environmentId: input.environmentId,
@@ -193,13 +194,13 @@ class MemoryStore implements PatchbayStore {
       status: "active",
       allowedCapabilities: [...READ_ONLY_CAPABILITIES],
       createdAt: createdAt.toISOString(),
-      expiresAt: new Date(createdAt.getTime() + ttlMinutes * 60_000).toISOString()
+      expiresAt: new Date(createdAt.getTime() + ttlSeconds * 1000).toISOString()
     };
 
     this.sessions.set(session.id, session);
     this.addAudit("session.created", input.requestedBy, session.id, {
       environmentId: input.environmentId,
-      ttlMinutes
+      ttlSeconds
     });
     return session;
   }
@@ -361,9 +362,26 @@ class MemoryStore implements PatchbayStore {
 
   private expireSessions() {
     const currentTime = Date.now();
+    const expiredAt = now();
     for (const session of this.sessions.values()) {
       if (session.status === "active" && Date.parse(session.expiresAt) <= currentTime) {
         this.sessions.set(session.id, { ...session, status: "expired" });
+        let deniedTasks = 0;
+        for (const task of this.tasks.values()) {
+          if (
+            task.sessionId === session.id &&
+            (task.status === "queued" || task.status === "running")
+          ) {
+            this.tasks.set(task.id, {
+              ...task,
+              status: "denied",
+              completedAt: expiredAt,
+              error: "Session expired"
+            });
+            deniedTasks += 1;
+          }
+        }
+        this.addAudit("session.expired", "system", session.id, { deniedTasks });
       }
     }
   }
@@ -526,7 +544,7 @@ class PostgresStore implements PatchbayStore {
   async createSession(input: CreateSessionInput): Promise<DebugSession> {
     await this.ensureEnvironment(input.environmentId);
     const id = makeId("sess");
-    const ttlMinutes = input.ttlMinutes ?? 30;
+    const ttlSeconds = sessionTtlSeconds(input);
     const result = await this.pool.query(
       `
         INSERT INTO sessions (
@@ -539,15 +557,15 @@ class PostgresStore implements PatchbayStore {
           allowed_capabilities,
           expires_at
         )
-        VALUES ($1, $2, $3, $4, 'read_only', 'active', $5, now() + ($6 || ' minutes')::interval)
+        VALUES ($1, $2, $3, $4, 'read_only', 'active', $5, now() + make_interval(secs => $6::int))
         RETURNING *
       `,
-      [id, input.environmentId, input.name, input.requestedBy, [...READ_ONLY_CAPABILITIES], ttlMinutes]
+      [id, input.environmentId, input.name, input.requestedBy, [...READ_ONLY_CAPABILITIES], ttlSeconds]
     );
 
     await this.addAudit("session.created", input.requestedBy, id, {
       environmentId: input.environmentId,
-      ttlMinutes
+      ttlSeconds
     });
     return toSession(result.rows[0]);
   }
@@ -834,9 +852,29 @@ class PostgresStore implements PatchbayStore {
   }
 
   private async expireSessions() {
-    await this.pool.query(
-      "UPDATE sessions SET status = 'expired' WHERE status = 'active' AND expires_at <= now()"
+    const expiredSessions = await this.pool.query(
+      "UPDATE sessions SET status = 'expired' WHERE status = 'active' AND expires_at <= now() RETURNING id"
     );
+
+    for (const row of expiredSessions.rows) {
+      const sessionId = stringValue(row.id);
+      const deniedResult = await this.pool.query(
+        `
+          UPDATE session_tasks
+          SET
+            status = 'denied',
+            completed_at = now(),
+            error = 'Session expired'
+          WHERE session_id = $1
+            AND status IN ('queued', 'running')
+          RETURNING id
+        `,
+        [sessionId]
+      );
+      await this.addAudit("session.expired", "system", sessionId, {
+        deniedTasks: deniedResult.rowCount ?? 0
+      });
+    }
   }
 
   private async expireRunningTasks() {
@@ -964,6 +1002,9 @@ const ensureTaskEventCanApply = (task: DiagnosticTask, input: AddTaskEventInput)
 
 const isTerminalTaskStatus = (status: TaskStatus) =>
   status === "completed" || status === "failed" || status === "denied";
+
+const sessionTtlSeconds = (input: Pick<CreateSessionInput, "ttlMinutes" | "ttlSeconds">) =>
+  input.ttlSeconds ?? (input.ttlMinutes ?? 30) * 60;
 
 const taskTimeoutSeconds = () => {
   const value = Number(process.env.PATCHBAY_TASK_TIMEOUT_SECONDS ?? 5 * 60);
