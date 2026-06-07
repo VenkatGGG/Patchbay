@@ -84,6 +84,7 @@ The agent exposes capabilities rather than arbitrary commands.
 Initial capabilities:
 
 - `workload.discover`
+- `cloud.metadata`
 - `system.info`
 - `process.list`
 - `disk.usage`
@@ -99,6 +100,8 @@ read-only "docker not available" result instead of failing enrollment.
 Initial workload packs:
 
 - Host: OS, process, disk, network, and log diagnostics.
+- Cloud host: safe AWS, GCP, and Azure metadata detection without querying
+  credential or user-data endpoints.
 - Docker: container inventory and status.
 - Kubernetes: pods, deployments, events, and node-level inventory.
 

@@ -1,5 +1,6 @@
 export const READ_ONLY_CAPABILITIES = [
   "workload.discover",
+  "cloud.metadata",
   "system.info",
   "process.list",
   "disk.usage",

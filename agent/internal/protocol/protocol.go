@@ -4,6 +4,7 @@ type Capability string
 
 const (
 	CapabilityWorkloadDiscover    Capability = "workload.discover"
+	CapabilityCloudMetadata       Capability = "cloud.metadata"
 	CapabilitySystemInfo          Capability = "system.info"
 	CapabilityProcessList         Capability = "process.list"
 	CapabilityDiskUsage           Capability = "disk.usage"

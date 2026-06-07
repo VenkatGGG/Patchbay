@@ -681,6 +681,7 @@ class PostgresStore implements PatchbayStore {
 const createDiagnosticTasks = (sessionId: string, agents: Agent[]) => {
   const desired: Capability[] = [
     "workload.discover",
+    "cloud.metadata",
     "system.info",
     "process.list",
     "disk.usage",
@@ -745,6 +746,10 @@ const paramsFor = (capability: Capability): Record<string, unknown> => {
       return {
         pattern: "timeout|latency|connection|pool|error",
         paths: []
+      };
+    case "cloud.metadata":
+      return {
+        timeoutMs: 800
       };
     case "process.list":
       return {

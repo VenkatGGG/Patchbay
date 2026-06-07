@@ -203,7 +203,11 @@ async function main() {
     operatorHeaders()
   );
   assert(diagnosticResponse.status === 201, "expected diagnostics creation to return 201");
-  assert(diagnosticResponse.body.length === 9, "expected all read-only tasks");
+  assert(diagnosticResponse.body.length === 10, "expected all read-only tasks");
+  assert(
+    diagnosticResponse.body.some((task) => task.capability === "cloud.metadata"),
+    "expected diagnostics to include cloud metadata task"
+  );
   const firstDiagnosticTask = diagnosticResponse.body[0];
   assert(firstDiagnosticTask?.id, "expected a diagnostic task id");
   const redactionTask = diagnosticResponse.body.find(
@@ -316,7 +320,7 @@ async function main() {
   await waitForCondition("all diagnostic tasks to complete", async () => {
     const state = await getJson("/api/state", operatorHeaders());
     const tasks = state.tasks.filter((task) => task.sessionId === sessionId);
-    return tasks.length === 9 && tasks.every((task) => task.status === "completed");
+    return tasks.length === 10 && tasks.every((task) => task.status === "completed");
   });
 
   const synthesisResponse = await postJson(
@@ -350,6 +354,10 @@ async function main() {
   assert(
     reportResponse.body.includes("workload.discover"),
     "expected report to include diagnostic task coverage"
+  );
+  assert(
+    reportResponse.body.includes("cloud.metadata"),
+    "expected report to include cloud metadata coverage"
   );
   assert(
     reportResponse.body.includes("gemini:offline"),

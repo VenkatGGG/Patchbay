@@ -24,6 +24,7 @@ func NewRegistry() *Registry {
 	return &Registry{
 		handlers: map[protocol.Capability]Handler{
 			protocol.CapabilityWorkloadDiscover:    workloadDiscover,
+			protocol.CapabilityCloudMetadata:       cloudMetadata,
 			protocol.CapabilitySystemInfo:          systemInfo,
 			protocol.CapabilityProcessList:         processList,
 			protocol.CapabilityDiskUsage:           diskUsage,
