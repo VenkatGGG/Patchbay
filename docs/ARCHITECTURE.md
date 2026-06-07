@@ -61,9 +61,10 @@ enrollment and task polling remain on their own protocol path.
 Agent enrollment uses an environment-scoped enrollment token. The enrollment
 response includes a signed, expiring agent API token, which the Go agent uses for
 task polling and event ingestion. `PATCHBAY_REQUIRE_AGENT_TOKEN=true` enforces
-this post-enrollment token path; local development can leave it disabled. Task
-event ingestion also verifies the authenticated agent owns the task before
-accepting status or result updates.
+this post-enrollment token path; local development can leave it disabled. Agents
+refresh their signed API token through an authenticated agent endpoint before
+expiry. Task event ingestion also verifies the authenticated agent owns the task
+before accepting status or result updates.
 
 ## Agent
 

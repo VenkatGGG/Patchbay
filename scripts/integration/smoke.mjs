@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -106,6 +107,12 @@ async function main() {
     401
   );
 
+  await expectStatus(
+    "unauthenticated agent token refresh is rejected",
+    postJson("/api/agent/token", {}),
+    401
+  );
+
   const tokenResponse = await postJson(
     "/api/environments/env_local/enrollment-token",
     {
@@ -175,6 +182,42 @@ async function main() {
     "expected secondary agent token expiry"
   );
 
+  const refreshedAgentResponse = await postJson(
+    "/api/agent/token",
+    {},
+    {
+      Authorization: `Bearer ${secondAgentResponse.body.agentToken}`
+    }
+  );
+  assert(refreshedAgentResponse.status === 200, "expected agent token refresh");
+  assert(
+    refreshedAgentResponse.body.agentId === secondAgentResponse.body.agent.id,
+    "expected refreshed token to belong to the secondary agent"
+  );
+  assert(refreshedAgentResponse.body.agentToken, "expected refreshed agent token");
+  assert(
+    Date.parse(refreshedAgentResponse.body.agentTokenExpiresAt) > Date.now(),
+    "expected refreshed agent token expiry to be in the future"
+  );
+
+  const expiredToken = createSignedAgentToken({
+    agentId: secondAgentResponse.body.agent.id,
+    environmentId: "env_local",
+    issuedAt: new Date(Date.now() - 120_000).toISOString(),
+    expiresAt: new Date(Date.now() - 60_000).toISOString()
+  });
+  await expectStatus(
+    "expired agent token refresh is rejected",
+    postJson(
+      "/api/agent/token",
+      {},
+      {
+        Authorization: `Bearer ${expiredToken}`
+      }
+    ),
+    401
+  );
+
   await expectStatus(
     "agent cannot update another agent task",
     postJson(
@@ -186,7 +229,7 @@ async function main() {
         status: "running"
       },
       {
-        Authorization: `Bearer ${secondAgentResponse.body.agentToken}`
+        Authorization: `Bearer ${refreshedAgentResponse.body.agentToken}`
       }
     ),
     403
@@ -379,6 +422,22 @@ function enrollmentHeaders(token) {
   return {
     Authorization: `Bearer ${token}`
   };
+}
+
+function createSignedAgentToken({ agentId, environmentId, issuedAt, expiresAt }) {
+  const body = Buffer.from(
+    JSON.stringify({
+      purpose: "agent_api",
+      agentId,
+      environmentId,
+      issuedAt,
+      expiresAt
+    })
+  ).toString("base64url");
+  const signature = createHmac("sha256", "integration-agent-auth-secret")
+    .update(body)
+    .digest("base64url");
+  return `${body}.${signature}`;
 }
 
 async function postJson(path, payload, headers = {}) {

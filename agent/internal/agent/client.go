@@ -13,10 +13,11 @@ import (
 )
 
 type Client struct {
-	baseURL         string
-	enrollmentToken string
-	agentToken      string
-	httpClient      *http.Client
+	baseURL             string
+	enrollmentToken     string
+	agentToken          string
+	agentTokenExpiresAt time.Time
+	httpClient          *http.Client
 }
 
 func NewClient(baseURL string, enrollmentToken string) *Client {
@@ -34,8 +35,35 @@ func (client *Client) Enroll(ctx context.Context, request protocol.EnrollRequest
 	if err := client.post(ctx, "/api/agent/enroll", request, &response, client.enrollmentToken); err != nil {
 		return protocol.EnrollResponse{}, err
 	}
-	client.agentToken = response.AgentToken
+	if err := client.applyAgentToken(response.AgentToken, response.AgentTokenExpiresAt); err != nil {
+		return protocol.EnrollResponse{}, err
+	}
 	return response, nil
+}
+
+func (client *Client) RefreshAgentToken(ctx context.Context) (protocol.AgentTokenResponse, error) {
+	var response protocol.AgentTokenResponse
+	if err := client.post(ctx, "/api/agent/token", map[string]string{}, &response, client.agentToken); err != nil {
+		return protocol.AgentTokenResponse{}, err
+	}
+	if err := client.applyAgentToken(response.AgentToken, response.AgentTokenExpiresAt); err != nil {
+		return protocol.AgentTokenResponse{}, err
+	}
+	return response, nil
+}
+
+func (client *Client) RefreshAgentTokenIfNeeded(ctx context.Context, refreshWindow time.Duration) (bool, error) {
+	if client.agentToken == "" || client.agentTokenExpiresAt.IsZero() {
+		return false, nil
+	}
+	if time.Until(client.agentTokenExpiresAt) > refreshWindow {
+		return false, nil
+	}
+
+	if _, err := client.RefreshAgentToken(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (client *Client) PollTasks(ctx context.Context, agentID string) ([]protocol.Task, error) {
@@ -96,6 +124,21 @@ func (client *Client) post(ctx context.Context, path string, requestPayload any,
 		}
 	}
 
+	return nil
+}
+
+func (client *Client) applyAgentToken(token string, expiresAt string) error {
+	client.agentToken = token
+	if expiresAt == "" {
+		client.agentTokenExpiresAt = time.Time{}
+		return nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return fmt.Errorf("parse agent token expiry: %w", err)
+	}
+	client.agentTokenExpiresAt = parsed
 	return nil
 }
 

@@ -9,33 +9,38 @@ type AgentTokenPayload = {
 };
 
 type AgentAuthResult =
-  | { ok: true; agentId?: string; environmentId?: string }
+  | { ok: true; agentId?: string; environmentId?: string; expiresAt?: string }
   | { ok: false; reason: string };
 
-export function createAgentToken(agentId: string, environmentId: string) {
+type AgentAuthOptions = {
+  requireToken?: boolean;
+};
+
+export function createAgentTokenEnvelope(agentId: string, environmentId: string) {
   const issuedAt = new Date();
+  const expiresAt = new Date(
+    issuedAt.getTime() + agentTokenTtlMinutes() * 60_000
+  ).toISOString();
   const payload: AgentTokenPayload = {
     purpose: "agent_api",
     agentId,
     environmentId,
     issuedAt: issuedAt.toISOString(),
-    expiresAt: new Date(
-      issuedAt.getTime() + agentTokenTtlMinutes() * 60_000
-    ).toISOString()
+    expiresAt
   };
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return `${body}.${sign(body)}`;
-}
-
-export function agentTokenExpiresAt() {
-  return new Date(Date.now() + agentTokenTtlMinutes() * 60_000).toISOString();
+  return {
+    agentToken: `${body}.${sign(body)}`,
+    agentTokenExpiresAt: expiresAt
+  };
 }
 
 export function verifyAgentAuthorization(
   authorization: string | null,
-  expectedAgentId?: string
+  expectedAgentId?: string,
+  options: AgentAuthOptions = {}
 ): AgentAuthResult {
-  if (!agentTokenRequired()) {
+  if (!agentTokenRequired() && !options.requireToken) {
     return { ok: true };
   }
 
@@ -61,7 +66,8 @@ export function verifyAgentAuthorization(
   return {
     ok: true,
     agentId: payload.agentId,
-    environmentId: payload.environmentId
+    environmentId: payload.environmentId,
+    expiresAt: payload.expiresAt
   };
 }
 

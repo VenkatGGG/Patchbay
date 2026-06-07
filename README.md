@@ -154,7 +154,8 @@ PATCHBAY_ENROLLMENT_TOKEN=<token> pnpm agent:run
 
 Enrollment tokens are used only to enroll an agent. After enrollment, the
 control plane returns a signed agent API token and the Go agent uses it for task
-polling and event uploads.
+polling and event uploads. The Go agent refreshes this token before expiry while
+the current token is still valid.
 
 For local development, post-enrollment agent tokens are optional by default. To
 require them:

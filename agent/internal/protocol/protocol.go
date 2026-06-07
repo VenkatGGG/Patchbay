@@ -37,6 +37,13 @@ type EnrollResponse struct {
 	Tailscale           TailscaleReply `json:"tailscale"`
 }
 
+type AgentTokenResponse struct {
+	AgentID             string `json:"agentId"`
+	EnvironmentID       string `json:"environmentId"`
+	AgentToken          string `json:"agentToken"`
+	AgentTokenExpiresAt string `json:"agentTokenExpiresAt"`
+}
+
 type TailscaleReply struct {
 	Available      bool     `json:"available"`
 	AuthKey        string   `json:"authKey,omitempty"`

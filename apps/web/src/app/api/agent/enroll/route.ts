@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { agentTokenExpiresAt, createAgentToken } from "@/lib/agent-auth";
+import { createAgentTokenEnvelope } from "@/lib/agent-auth";
 import {
   enrollmentTokenFromAuthorization,
   verifyEnrollmentToken
@@ -49,12 +49,12 @@ export async function POST(request: NextRequest) {
       authKeyPreview: authKey.preview
     }
   });
+  const agentToken = createAgentTokenEnvelope(agent.id, agent.environmentId);
 
   return NextResponse.json(
     {
       agent,
-      agentToken: createAgentToken(agent.id, agent.environmentId),
-      agentTokenExpiresAt: agentTokenExpiresAt(),
+      ...agentToken,
       tailscale: {
         available: authKey.available,
         authKey: authKey.key,

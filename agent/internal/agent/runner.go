@@ -47,6 +47,13 @@ func Run(ctx context.Context, config Config, logger *slog.Logger) error {
 	defer ticker.Stop()
 
 	for {
+		refreshed, err := client.RefreshAgentTokenIfNeeded(ctx, 5*time.Minute)
+		if err != nil {
+			logger.Warn("agent token refresh failed", "error", err)
+		} else if refreshed {
+			logger.Info("agent token refreshed")
+		}
+
 		if err := runPollCycle(ctx, client, registry, enrollment.Agent.ID, logger); err != nil {
 			logger.Warn("poll cycle failed", "error", err)
 		}
