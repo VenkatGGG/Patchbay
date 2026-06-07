@@ -1,9 +1,13 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const buildPath = fileURLToPath(new URL("../../apps/web/.next", import.meta.url));
+const cssPath = fileURLToPath(new URL("../../apps/web/src/app/globals.css", import.meta.url));
+const dashboardPath = fileURLToPath(
+  new URL("../../apps/web/src/components/control-plane-dashboard.tsx", import.meta.url)
+);
 const port = Number(process.env.PATCHBAY_UI_SMOKE_PORT ?? 3104);
 const baseUrl = `http://127.0.0.1:${port}`;
 const operatorToken =
@@ -93,6 +97,7 @@ async function main() {
   ]) {
     assert(html.includes(expected), `expected dashboard HTML to include ${expected}`);
   }
+  assertUiHardeningSource();
   assertNoSecretLeak("dashboard HTML", html);
 
   const readyResponse = await getResponse("/api/ready");
@@ -182,6 +187,33 @@ async function main() {
       2
     )
   );
+}
+
+function assertUiHardeningSource() {
+  const css = readFileSync(cssPath, "utf8");
+  const dashboard = readFileSync(dashboardPath, "utf8");
+
+  for (const expected of [
+    ".table-viewport",
+    "overflow-x: auto",
+    ".table-action:focus-visible",
+    ".selected-row",
+    "@media (max-width: 980px)"
+  ]) {
+    assert(css.includes(expected), `expected dashboard CSS to include ${expected}`);
+  }
+
+  for (const expected of [
+    "function TableViewport",
+    'role="region"',
+    "tabIndex={0}",
+    "Enrolled agents",
+    "Diagnostic tasks",
+    "Incident sessions",
+    'className="table-action"'
+  ]) {
+    assert(dashboard.includes(expected), `expected dashboard source to include ${expected}`);
+  }
 }
 
 function spawnProcess(command, args, env = {}) {

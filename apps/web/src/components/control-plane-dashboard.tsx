@@ -661,40 +661,42 @@ export function ControlPlaneDashboard({
               {state.agents.length === 0 ? (
                 <div className="empty">No agents enrolled.</div>
               ) : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Status</th>
-                      <th>Capabilities</th>
-                      <th>Tailscale</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {state.agents.map((agent) => (
-                      <tr key={agent.id}>
-                        <td>
-                          <strong>{agent.name}</strong>
-                          <div className="mono">{agent.id}</div>
-                        </td>
-                        <td>
-                          <StatusPill value={agent.status} />
-                        </td>
-                        <td>
-                          <strong>{agent.capabilities.length}</strong>
-                          <div className="muted-line">
-                            {agent.capabilities.slice(0, 3).join(", ")}
-                          </div>
-                        </td>
-                        <td>
-                          {agent.tailscale.enabled
-                            ? agent.tailscale.authKeyPreview ?? "enabled"
-                            : "local dev"}
-                        </td>
+                <TableViewport label="Enrolled agents">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Capabilities</th>
+                        <th>Tailscale</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {state.agents.map((agent) => (
+                        <tr key={agent.id}>
+                          <td>
+                            <strong>{agent.name}</strong>
+                            <div className="mono">{agent.id}</div>
+                          </td>
+                          <td>
+                            <StatusPill value={agent.status} />
+                          </td>
+                          <td>
+                            <strong>{agent.capabilities.length}</strong>
+                            <div className="muted-line">
+                              {agent.capabilities.slice(0, 3).join(", ")}
+                            </div>
+                          </td>
+                          <td>
+                            {agent.tailscale.enabled
+                              ? agent.tailscale.authKeyPreview ?? "enabled"
+                              : "local dev"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableViewport>
               )}
             </Panel>
 
@@ -706,26 +708,28 @@ export function ControlPlaneDashboard({
               {selectedTasks.length === 0 ? (
                 <div className="empty">No diagnostic tasks yet.</div>
               ) : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Capability</th>
-                      <th>Agent</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedTasks.map((task) => (
-                      <tr key={task.id}>
-                        <td className="mono">{task.capability}</td>
-                        <td className="mono">{task.agentId}</td>
-                        <td>
-                          <StatusPill value={task.status} />
-                        </td>
+                <TableViewport label="Diagnostic tasks">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Capability</th>
+                        <th>Agent</th>
+                        <th>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {selectedTasks.map((task) => (
+                        <tr key={task.id}>
+                          <td className="mono">{task.capability}</td>
+                          <td className="mono">{task.agentId}</td>
+                          <td>
+                            <StatusPill value={task.status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableViewport>
               )}
             </Panel>
           </div>
@@ -739,31 +743,40 @@ export function ControlPlaneDashboard({
               {state.sessions.length === 0 ? (
                 <div className="empty">No sessions started.</div>
               ) : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {state.sessions.map((session) => (
-                      <tr
-                        key={session.id}
-                        onClick={() => setSelectedSessionId(session.id)}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <td>
-                          <strong>{session.name}</strong>
-                          <div className="mono">{session.id}</div>
-                        </td>
-                        <td>
-                          <StatusPill value={session.status} />
-                        </td>
+                <TableViewport label="Incident sessions">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {state.sessions.map((session) => (
+                        <tr
+                          className={
+                            selectedSession?.id === session.id ? "selected-row" : ""
+                          }
+                          key={session.id}
+                        >
+                          <td>
+                            <button
+                              className="table-action"
+                              type="button"
+                              onClick={() => setSelectedSessionId(session.id)}
+                            >
+                              <strong>{session.name}</strong>
+                              <span className="mono">{session.id}</span>
+                            </button>
+                          </td>
+                          <td>
+                            <StatusPill value={session.status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableViewport>
               )}
             </Panel>
 
@@ -957,6 +970,20 @@ function Panel({
       </div>
       <div className="panel-body">{children}</div>
     </section>
+  );
+}
+
+function TableViewport({
+  label,
+  children
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="table-viewport" role="region" aria-label={label} tabIndex={0}>
+      {children}
+    </div>
   );
 }
 

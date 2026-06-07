@@ -259,6 +259,14 @@ button {
   opacity: 0.55;
 }
 
+.button:focus-visible,
+.input:focus-visible,
+.table-action:focus-visible,
+.table-viewport:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
 .icon-button {
   width: 38px;
   padding: 0;
@@ -404,7 +412,15 @@ button {
   background: var(--green);
 }
 
+.table-viewport {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .table {
+  min-width: 520px;
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
@@ -428,6 +444,36 @@ button {
 
 .table tr:last-child td {
   border-bottom: 0;
+}
+
+.table td {
+  overflow-wrap: anywhere;
+}
+
+.table .mono {
+  font-size: 12px;
+}
+
+.selected-row td {
+  background: var(--blue-soft);
+}
+
+.table-action {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.table-action span,
+.table-action strong {
+  overflow-wrap: anywhere;
 }
 
 .mono {
@@ -705,5 +751,20 @@ button {
 
   .icon-button {
     width: 100%;
+  }
+
+  .main,
+  .sidebar {
+    padding: 18px;
+  }
+
+  .metric-grid,
+  .health-grid,
+  .posture-grid {
+    gap: 8px;
+  }
+
+  .table {
+    min-width: 460px;
   }
 }
