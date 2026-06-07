@@ -96,10 +96,13 @@ curl http://localhost:3000/api/state \
 ### Local Postgres
 
 ```bash
-pnpm db:up
-pnpm db:migrate
+pnpm db:local
 PATCHBAY_STORAGE=postgres pnpm dev
 ```
+
+`pnpm db:local` starts the Compose Postgres service, applies
+`apps/web/db/schema.sql`, and verifies the Patchbay tables exist. If you want to
+run those steps manually, use `pnpm db:up` followed by `pnpm db:migrate`.
 
 The default local database URL is:
 
@@ -141,7 +144,7 @@ pnpm check
 Run the same end-to-end test against Postgres:
 
 ```bash
-pnpm db:up
+pnpm db:local
 pnpm test:integration:postgres
 ```
 

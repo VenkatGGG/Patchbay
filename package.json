@@ -7,6 +7,7 @@
     "web:build": "pnpm --filter @patchbay/web build",
     "web:typecheck": "pnpm --filter @patchbay/web typecheck",
     "db:up": "docker compose up -d postgres",
+    "db:local": "node scripts/setup/local-postgres.mjs",
     "db:migrate": "pnpm --filter @patchbay/web db:migrate",
     "agent:test": "go test ./agent/...",
     "agent:run": "go run ./agent/cmd/patchbay-agent",
