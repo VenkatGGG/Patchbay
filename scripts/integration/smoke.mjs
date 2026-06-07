@@ -648,7 +648,7 @@ async function main() {
       { scenario: "latency_spike" },
       operatorHeaders()
     ),
-    409
+    404
   );
 
   await expectStatus(

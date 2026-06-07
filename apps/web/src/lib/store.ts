@@ -247,7 +247,10 @@ class MemoryStore implements PatchbayStore {
 
   async createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]> {
     const session = await this.getSession(sessionId);
-    if (!session || session.status !== "active") {
+    if (!session) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+    if (session.status !== "active") {
       throw new Error("Session is not active");
     }
 
@@ -636,7 +639,10 @@ class PostgresStore implements PatchbayStore {
 
   async createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]> {
     const session = await this.getSession(sessionId);
-    if (!session || session.status !== "active") {
+    if (!session) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+    if (session.status !== "active") {
       throw new Error("Session is not active");
     }
 
