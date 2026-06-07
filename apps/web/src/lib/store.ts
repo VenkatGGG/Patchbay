@@ -1,4 +1,5 @@
 import pg from "pg";
+import { artifactRetentionCutoffMs } from "./retention";
 import {
   Agent,
   AuditEvent,
@@ -116,6 +117,7 @@ class MemoryStore implements PatchbayStore {
   async snapshot(): Promise<ControlPlaneState> {
     this.expireSessions();
     this.expireRunningTasks();
+    this.applyArtifactRetention();
 
     return {
       environments: [...this.environments.values()],
@@ -416,6 +418,55 @@ class MemoryStore implements PatchbayStore {
     }
   }
 
+  private applyArtifactRetention() {
+    const cutoffMs = artifactRetentionCutoffMs();
+    if (cutoffMs === undefined) {
+      return;
+    }
+
+    let prunedTaskResults = 0;
+    let prunedTaskEvents = 0;
+    let prunedSyntheses = 0;
+
+    for (const task of this.tasks.values()) {
+      const retentionAt = Date.parse(task.completedAt ?? task.createdAt);
+      if (
+        task.result !== undefined &&
+        isTerminalTaskStatus(task.status) &&
+        Number.isFinite(retentionAt) &&
+        retentionAt <= cutoffMs
+      ) {
+        this.tasks.set(task.id, { ...task, result: undefined });
+        prunedTaskResults += 1;
+      }
+    }
+
+    for (const event of this.events.values()) {
+      const createdAt = Date.parse(event.createdAt);
+      if (Number.isFinite(createdAt) && createdAt <= cutoffMs) {
+        this.events.delete(event.id);
+        prunedTaskEvents += 1;
+      }
+    }
+
+    for (const synthesis of this.syntheses.values()) {
+      const createdAt = Date.parse(synthesis.createdAt);
+      if (Number.isFinite(createdAt) && createdAt <= cutoffMs) {
+        this.syntheses.delete(synthesis.id);
+        prunedSyntheses += 1;
+      }
+    }
+
+    if (prunedTaskResults + prunedTaskEvents + prunedSyntheses > 0) {
+      this.addAudit("artifact.retention.pruned", "system", "retention", {
+        cutoff: new Date(cutoffMs).toISOString(),
+        taskResults: prunedTaskResults,
+        taskEvents: prunedTaskEvents,
+        syntheses: prunedSyntheses
+      });
+    }
+  }
+
   private addAudit(
     action: string,
     actor: string,
@@ -441,6 +492,7 @@ class PostgresStore implements PatchbayStore {
     await this.ensureDefaultEnvironment();
     await this.expireSessions();
     await this.expireRunningTasks();
+    await this.applyArtifactRetention();
 
     const [
       environments,
@@ -905,6 +957,46 @@ class PostgresStore implements PatchbayStore {
         sessionId: stringValue(row.session_id),
         agentId: stringValue(row.agent_id),
         timeoutSeconds
+      });
+    }
+  }
+
+  private async applyArtifactRetention() {
+    const cutoffMs = artifactRetentionCutoffMs();
+    if (cutoffMs === undefined) {
+      return;
+    }
+
+    const cutoff = new Date(cutoffMs).toISOString();
+    const prunedTasks = await this.pool.query(
+      `
+        UPDATE session_tasks
+        SET result = NULL
+        WHERE result IS NOT NULL
+          AND status IN ('completed', 'failed', 'denied')
+          AND COALESCE(completed_at, created_at) <= $1
+        RETURNING id
+      `,
+      [cutoff]
+    );
+    const prunedEvents = await this.pool.query(
+      "DELETE FROM task_events WHERE created_at <= $1 RETURNING id",
+      [cutoff]
+    );
+    const prunedSyntheses = await this.pool.query(
+      "DELETE FROM syntheses WHERE created_at <= $1 RETURNING id",
+      [cutoff]
+    );
+
+    const taskResults = prunedTasks.rowCount ?? 0;
+    const taskEvents = prunedEvents.rowCount ?? 0;
+    const syntheses = prunedSyntheses.rowCount ?? 0;
+    if (taskResults + taskEvents + syntheses > 0) {
+      await this.addAudit("artifact.retention.pruned", "system", "retention", {
+        cutoff,
+        taskResults,
+        taskEvents,
+        syntheses
       });
     }
   }

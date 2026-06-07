@@ -56,6 +56,15 @@ type RuntimeStatus = {
     configuredMaxJsonBodyBytes?: number;
     hardMaxJsonBodyBytes: number;
   };
+  artifactRetention: {
+    enabled: boolean;
+    valid: boolean;
+    days?: number;
+    seconds?: number;
+    configuredDays?: number;
+    defaultDays: number;
+    maxDays: number;
+  };
   tailscale: {
     configured: boolean;
     tailnetConfigured: boolean;
@@ -907,6 +916,19 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
       status: "ready"
     },
     {
+      label: "Retention",
+      value: runtimeStatus?.artifactRetention.enabled
+        ? formatRetention(runtimeStatus.artifactRetention.days)
+        : "off",
+      status: runtimeStatus
+        ? runtimeStatus.artifactRetention.valid
+          ? runtimeStatus.artifactRetention.enabled
+            ? "ready"
+            : "warning"
+          : "critical"
+        : "warning"
+    },
+    {
       label: "LLM",
       value: selectedProvider?.displayName ?? "unknown",
       status: selectedProvider?.configured ? "ready" : "warning"
@@ -1048,6 +1070,28 @@ function formatBytes(bytes: number) {
     return `${bytes / 1024} KiB`;
   }
   return `${bytes} bytes`;
+}
+
+function formatRetention(days?: number) {
+  if (days === undefined) {
+    return "unknown";
+  }
+  if (days === 1) {
+    return "1d";
+  }
+  if (days < 1) {
+    const hours = days * 24;
+    return hours >= 1
+      ? `${formatCompactNumber(hours)}h`
+      : `${formatCompactNumber(hours * 60)}m`;
+  }
+  return `${formatCompactNumber(days)}d`;
+}
+
+function formatCompactNumber(value: number) {
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(2).replace(/0+$/u, "").replace(/\.$/u, "");
 }
 
 function countTasks(state: ControlPlaneState, status: string) {

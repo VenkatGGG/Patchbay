@@ -86,7 +86,9 @@ Minimum requirements:
   `PATCHBAY_AGENT_AUTH_SECRET` in ignored local or deployment secret stores.
 - Use `pnpm env:local` to create the ignored `apps/web/.env.local` envelope
   with generated local signing tokens before adding real provider credentials.
-- Keep artifact retention configurable.
+- Keep artifact retention configurable with `PATCHBAY_ARTIFACT_RETENTION_DAYS`;
+  old task result payloads, task events, and syntheses are pruned while
+  session/task metadata and audit history are preserved.
 - Make persistence optional for self-hosted deployments.
 
 Initial redaction targets:

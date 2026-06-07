@@ -1,4 +1,5 @@
 import type { LLMProviderStatus } from "./llm";
+import type { ArtifactRetentionStatus } from "./retention";
 
 export type ReadinessCheckStatus = "ready" | "warning" | "critical";
 
@@ -44,6 +45,7 @@ type ApiValidationStatus = {
 type ReadinessInput = {
   runtime: RuntimeStatus;
   apiValidation: ApiValidationStatus;
+  artifactRetention: ArtifactRetentionStatus;
   operatorAuth: {
     required: boolean;
   };
@@ -120,6 +122,13 @@ export function buildReadinessPosture(input: ReadinessInput): ReadinessPosture {
           )} cap.`
     },
     {
+      id: "artifact_retention",
+      label: "Artifact Retention",
+      status: artifactRetentionCheckStatus(input.artifactRetention),
+      summary: artifactRetentionSummary(input.artifactRetention),
+      detail: artifactRetentionDetail(input.artifactRetention)
+    },
+    {
       id: "llm_provider",
       label: "LLM Provider",
       status: selectedProvider?.configured ? "ready" : "warning",
@@ -165,6 +174,60 @@ function requiredSecretStatus(status: RequiredSecretStatus): ReadinessCheckStatu
   }
 
   return status.secretConfigured ? "ready" : "critical";
+}
+
+function artifactRetentionCheckStatus(
+  status: ArtifactRetentionStatus
+): ReadinessCheckStatus {
+  if (!status.valid) {
+    return "critical";
+  }
+  return status.enabled ? "ready" : "warning";
+}
+
+function artifactRetentionSummary(status: ArtifactRetentionStatus) {
+  if (!status.valid) {
+    return "Artifact retention config is invalid";
+  }
+  if (!status.enabled) {
+    return "Diagnostic artifacts are retained indefinitely";
+  }
+  return `Diagnostic artifacts are retained for ${formatDays(status.days ?? 0)}`;
+}
+
+function artifactRetentionDetail(status: ArtifactRetentionStatus) {
+  if (!status.valid) {
+    return "PATCHBAY_ARTIFACT_RETENTION_DAYS must be zero or a positive number.";
+  }
+  if (!status.enabled) {
+    return "Set PATCHBAY_ARTIFACT_RETENTION_DAYS to prune old task payloads, task events, and syntheses.";
+  }
+  if (status.configuredDays !== undefined && status.configuredDays > status.maxDays) {
+    return `PATCHBAY_ARTIFACT_RETENTION_DAYS is capped at ${status.maxDays} days.`;
+  }
+  return status.configuredDays === undefined
+    ? `PATCHBAY_ARTIFACT_RETENTION_DAYS is unset, so Patchbay uses the default ${status.defaultDays} day retention window.`
+    : "Patchbay prunes old task payloads, task events, and syntheses after this window.";
+}
+
+function formatDays(days: number) {
+  if (days === 1) {
+    return "1 day";
+  }
+  if (days < 1) {
+    const hours = days * 24;
+    if (hours >= 1) {
+      return `${formatNumber(hours)} hours`;
+    }
+    return `${formatNumber(hours * 60)} minutes`;
+  }
+  return `${formatNumber(days)} days`;
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(2).replace(/0+$/u, "").replace(/\.$/u, "");
 }
 
 function formatBytes(bytes: number) {

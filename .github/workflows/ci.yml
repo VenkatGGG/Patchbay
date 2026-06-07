@@ -64,6 +64,9 @@ jobs:
       - name: Run Postgres task timeout smoke test
         run: pnpm test:task-timeout:postgres
 
+      - name: Run Postgres artifact retention smoke test
+        run: pnpm test:artifact-retention:postgres
+
       - name: Run Postgres schema integrity smoke test
         run: pnpm test:postgres:schema
 

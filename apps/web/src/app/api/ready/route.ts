@@ -5,6 +5,7 @@ import { enrollmentAuthStatus } from "@/lib/enrollment-token";
 import { listLLMProviders } from "@/lib/llm";
 import { operatorAuthStatus } from "@/lib/operator-auth";
 import { buildReadinessPosture } from "@/lib/readiness";
+import { artifactRetentionStatus } from "@/lib/retention";
 import { getStoreRuntime, store } from "@/lib/store";
 import { tailscaleRuntimeStatus } from "@/lib/tailscale";
 
@@ -13,6 +14,7 @@ export async function GET() {
     const state = await store.snapshot();
     const agentAuth = agentAuthStatus();
     const apiValidation = apiValidationStatus();
+    const artifactRetention = artifactRetentionStatus();
     const enrollmentAuth = enrollmentAuthStatus();
     const llmProviders = listLLMProviders();
     const operatorAuth = operatorAuthStatus();
@@ -21,6 +23,7 @@ export async function GET() {
     const posture = buildReadinessPosture({
       agentAuth,
       apiValidation,
+      artifactRetention,
       enrollmentAuth,
       llmProviders,
       operatorAuth,
@@ -35,6 +38,7 @@ export async function GET() {
         timestamp: new Date().toISOString(),
         agentAuth,
         apiValidation,
+        artifactRetention,
         enrollmentAuth,
         operatorAuth,
         runtime,

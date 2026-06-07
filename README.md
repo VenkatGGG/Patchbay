@@ -148,6 +148,8 @@ pnpm check
   signed agent API tokens, agent diagnostics, report export, and offline Gemini
   synthesis.
 - Task timeout smoke test for stale running diagnostics.
+- Artifact retention smoke test for old diagnostic payloads, events, and
+  syntheses.
 - Offline Gemini fallback smoke test.
 - Fake Gemini synthesis smoke test that verifies provider success, request
   shape, and redacted evidence without calling the real Gemini API.
@@ -160,6 +162,7 @@ Run the same end-to-end test against Postgres:
 pnpm db:local
 pnpm test:integration:postgres
 pnpm test:task-timeout:postgres
+pnpm test:artifact-retention:postgres
 pnpm test:postgres:schema
 ```
 
@@ -224,9 +227,18 @@ TAILSCALE_OAUTH_CLIENT_SECRET
 ### Readiness Posture
 
 `/api/ready` returns service liveness plus structured readiness checks for
-persistence, operator auth, enrollment auth, agent API auth, Gemini, and
-Tailscale automation. The dashboard renders the same checks in the Runtime
-Posture area so local/demo gaps are visible before production-like use.
+persistence, operator auth, enrollment auth, agent API auth, API body limits,
+artifact retention, Gemini, and Tailscale automation. The dashboard renders the
+same checks in the Runtime Posture area so local/demo gaps are visible before
+production-like use.
+
+### Artifact Retention
+
+`PATCHBAY_ARTIFACT_RETENTION_DAYS` controls how long Patchbay keeps diagnostic
+payload artifacts. The default is 30 days. Set it to `0` only for local cases
+where indefinite retention is intentional. Retention prunes old task result
+payloads, task events, and syntheses while preserving session/task metadata and
+audit history.
 
 ### Session Close
 

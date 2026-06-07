@@ -113,11 +113,14 @@ async function main() {
     ready.apiValidation.maxJsonBodyBytes === 1024 * 1024,
     `expected default JSON body cap 1MiB, got ${ready.apiValidation.maxJsonBodyBytes}`
   );
+  assert(ready.artifactRetention.enabled === true, "expected artifact retention enabled");
+  assert(ready.artifactRetention.valid === true, "expected artifact retention valid");
   assert(ready.posture.level === "degraded", "expected local production posture degraded");
   expectReadinessCheck(ready, "operator_auth", "ready");
   expectReadinessCheck(ready, "enrollment_auth", "ready");
   expectReadinessCheck(ready, "agent_auth", "ready");
   expectReadinessCheck(ready, "api_limits", "ready");
+  expectReadinessCheck(ready, "artifact_retention", "ready");
   expectReadinessCheck(ready, "llm_provider", "warning");
   expectReadinessCheck(ready, "tailscale", "warning");
 
@@ -215,7 +218,8 @@ function assertUiHardeningSource() {
     "Enrolled agents",
     "Diagnostic tasks",
     "Incident sessions",
-    'className="table-action"'
+    'className="table-action"',
+    'label: "Retention"'
   ]) {
     assert(dashboard.includes(expected), `expected dashboard source to include ${expected}`);
   }

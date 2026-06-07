@@ -77,6 +77,8 @@ async function main() {
     ready.apiValidation.hardMaxJsonBodyBytes === 10 * 1024 * 1024,
     `expected hard JSON body cap 10MiB, got ${ready.apiValidation.hardMaxJsonBodyBytes}`
   );
+  assert(ready.artifactRetention.enabled === true, "expected artifact retention enabled");
+  assert(ready.artifactRetention.valid === true, "expected artifact retention valid");
   const geminiProvider = ready.llmProviders.find((provider) => provider.id === "gemini");
   assert(geminiProvider, "expected Gemini provider in readiness payload");
   assert(geminiProvider.selected === true, "expected Gemini provider to be selected");
@@ -96,6 +98,7 @@ async function main() {
   expectReadinessCheck(ready, "enrollment_auth", "ready");
   expectReadinessCheck(ready, "agent_auth", "ready");
   expectReadinessCheck(ready, "api_limits", "ready");
+  expectReadinessCheck(ready, "artifact_retention", "ready");
   expectReadinessCheck(ready, "llm_provider", "warning");
   expectReadinessCheck(ready, "tailscale", "warning");
 
