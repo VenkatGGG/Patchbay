@@ -20,6 +20,7 @@ const enrollmentSecret =
 const agentSecret =
   envValue("PATCHBAY_AGENT_AUTH_SECRET") ?? `patchbay-live-agent-${secret()}`;
 const children = [];
+let createdAuthKeyId;
 
 const missingKeys = [
   ["TAILSCALE_TAILNET", tailnet],
@@ -110,6 +111,12 @@ async function main() {
     "expected non-empty Tailscale auth key"
   );
   assert(
+    typeof agentResponse.body.tailscale.authKeyId === "string" &&
+      agentResponse.body.tailscale.authKeyId.length > 0,
+    "expected Tailscale auth key id for cleanup"
+  );
+  createdAuthKeyId = agentResponse.body.tailscale.authKeyId;
+  assert(
     !agentResponse.body.tailscale.authKeyPreview.includes("disabled"),
     "expected live Tailscale auth key preview"
   );
@@ -130,12 +137,18 @@ async function main() {
     "expected enrolled agent to record Tailscale as enabled"
   );
 
+  await revokeTailscaleAuthKey(createdAuthKeyId);
+  const revokedAuthKeyId = createdAuthKeyId;
+  createdAuthKeyId = undefined;
+
   console.log(
     JSON.stringify(
       {
         ok: true,
         tailscaleAvailable: true,
         authKeyPreview: agentResponse.body.tailscale.authKeyPreview,
+        authKeyRevoked: true,
+        authKeyId: revokedAuthKeyId,
         tags: agentResponse.body.tailscale.tags,
         expiresAt: agentResponse.body.tailscale.expiresAt,
         readiness: ready.posture.level
@@ -168,6 +181,47 @@ function envValue(key) {
 
 function secret() {
   return randomBytes(18).toString("base64url");
+}
+
+async function requestTailscaleAccessToken() {
+  const tokenResponse = await fetch("https://api.tailscale.com/api/v2/oauth/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      client_id: tailscaleClientId,
+      client_secret: tailscaleClientSecret
+    })
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error(`Tailscale token request for cleanup failed: ${tokenResponse.status}`);
+  }
+
+  const token = await tokenResponse.json();
+  if (!token.access_token) {
+    throw new Error("Tailscale token response did not include access_token");
+  }
+
+  return token.access_token;
+}
+
+async function revokeTailscaleAuthKey(keyId) {
+  const accessToken = await requestTailscaleAccessToken();
+  const response = await fetch(
+    `https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys/${encodeURIComponent(keyId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Tailscale auth key cleanup failed: ${response.status}`);
+  }
 }
 
 function spawnProcess(command, args, env = {}) {
@@ -290,6 +344,17 @@ function assert(condition, message) {
 }
 
 async function cleanup() {
+  if (createdAuthKeyId) {
+    try {
+      await revokeTailscaleAuthKey(createdAuthKeyId);
+      createdAuthKeyId = undefined;
+    } catch (error) {
+      console.error(
+        `Warning: failed to revoke Tailscale auth key ${createdAuthKeyId}: ${messageFrom(error)}`
+      );
+    }
+  }
+
   for (const child of children.reverse()) {
     if (!child.killed) {
       killProcessGroup(child, "SIGTERM");
@@ -301,6 +366,10 @@ async function cleanup() {
       killProcessGroup(child, "SIGKILL");
     }
   }
+}
+
+function messageFrom(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function killProcessGroup(child, signal) {

@@ -1,5 +1,6 @@
 export type TailscaleAuthKey = {
   available: boolean;
+  id?: string;
   key?: string;
   preview: string;
   tags: string[];
@@ -70,9 +71,13 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
     throw new Error(`Tailscale auth key request failed: ${keyResponse.status}`);
   }
 
-  const payload = (await keyResponse.json()) as { key: string };
+  const payload = (await keyResponse.json()) as {
+    id?: string;
+    key: string;
+  };
   return {
     available: true,
+    id: payload.id,
     key: payload.key,
     preview: `${payload.key.slice(0, 8)}...${payload.key.slice(-4)}`,
     tags,

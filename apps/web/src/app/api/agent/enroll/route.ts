@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       ...agentToken,
       tailscale: {
         available: authKey.available,
+        authKeyId: authKey.id,
         authKey: authKey.key,
         authKeyPreview: authKey.preview,
         tags: authKey.tags,

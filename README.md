@@ -169,8 +169,8 @@ pnpm test:tailscale:live
 This starts a secured local control plane, checks that readiness reports
 Tailscale as configured, and fails unless agent enrollment mints a tagged,
 ephemeral, non-reusable Tailscale auth key through the real OAuth API. The
-command does not print the auth key and is intentionally not part of
-`pnpm check`.
+command does not print the auth key, revokes the generated key after validation,
+and is intentionally not part of `pnpm check`.
 
 The same live checks can run from GitHub Actions using the manual
 `Live Validations` workflow. Configure these repository secrets before running
