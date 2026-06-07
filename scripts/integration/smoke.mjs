@@ -134,6 +134,16 @@ async function main() {
     401
   );
 
+  await expectStatus(
+    "oversized enrollment token ttl is rejected",
+    postJson(
+      "/api/environments/env_local/enrollment-token",
+      { ttlMinutes: 24 * 60 + 1 },
+      operatorHeaders()
+    ),
+    400
+  );
+
   const tokenResponse = await postJson(
     "/api/environments/env_local/enrollment-token",
     {
@@ -143,6 +153,72 @@ async function main() {
   );
   assert(tokenResponse.status === 200, "expected token mint endpoint to return 200");
   assert(tokenResponse.body.token, "expected enrollment token");
+  assert(
+    tokenResponse.body.environmentId === "env_local",
+    "expected minted token response to include environment id"
+  );
+  assert(
+    Date.parse(tokenResponse.body.expiresAt) > Date.now(),
+    "expected minted enrollment token expiry to be in the future"
+  );
+
+  const wrongEnvironmentToken = createSignedEnrollmentToken({
+    environmentId: "env_other",
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  });
+  await expectStatus(
+    "wrong-environment enrollment token is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-wrong-env-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(wrongEnvironmentToken)
+    ),
+    401
+  );
+
+  const malformedExpiryToken = createSignedEnrollmentToken({
+    environmentId: "env_local",
+    expiresAt: "not-a-date"
+  });
+  await expectStatus(
+    "malformed-expiry enrollment token is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-malformed-expiry-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(malformedExpiryToken)
+    ),
+    401
+  );
+
+  const expiredEnrollmentToken = createSignedEnrollmentToken({
+    environmentId: "env_local",
+    expiresAt: new Date(Date.now() - 60_000).toISOString()
+  });
+  await expectStatus(
+    "expired enrollment token is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-expired-enrollment-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(expiredEnrollmentToken)
+    ),
+    401
+  );
+
 
   const redactionAgentResponse = await postJson(
     "/api/agent/enroll",
@@ -541,6 +617,20 @@ function enrollmentHeaders(token) {
   return {
     Authorization: `Bearer ${token}`
   };
+}
+
+function createSignedEnrollmentToken({ environmentId, expiresAt }) {
+  const body = Buffer.from(
+    JSON.stringify({
+      purpose: "agent_enrollment",
+      environmentId,
+      expiresAt
+    })
+  ).toString("base64url");
+  const signature = createHmac("sha256", "integration-secret")
+    .update(body)
+    .digest("base64url");
+  return `${body}.${signature}`;
 }
 
 function createSignedAgentToken({ agentId, environmentId, issuedAt, expiresAt }) {

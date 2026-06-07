@@ -15,7 +15,21 @@ export async function POST(
   if (unauthorized) return unauthorized;
 
   const { environmentId } = await context.params;
-  const body = createTokenSchema.parse(await request.json().catch(() => ({})));
+  const parsed = createTokenSchema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid enrollment token request",
+        issues: parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message
+        }))
+      },
+      { status: 400 }
+    );
+  }
+
+  const body = parsed.data;
   const token = createEnrollmentToken(environmentId, body.ttlMinutes);
 
   return NextResponse.json({

@@ -59,7 +59,12 @@ export function verifyEnrollmentToken(
     return { ok: false, reason: "Enrollment token is for another environment" };
   }
 
-  if (Date.parse(payload.expiresAt) <= Date.now()) {
+  const expiresAtMs = Date.parse(payload.expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    return { ok: false, reason: "Enrollment token expiry is invalid" };
+  }
+
+  if (expiresAtMs <= Date.now()) {
     return { ok: false, reason: "Enrollment token has expired" };
   }
 
