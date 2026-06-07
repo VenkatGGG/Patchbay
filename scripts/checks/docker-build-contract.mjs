@@ -15,7 +15,7 @@ const dockerignoreLines = readFileSync(dockerignorePath, "utf8")
 
 const requiredDockerfileSnippets = [
   "FROM node:25-alpine AS base",
-  "RUN corepack enable",
+  "RUN npm install -g pnpm@10.24.0",
   "COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./",
   "COPY apps/web/package.json apps/web/package.json",
   "RUN pnpm install --frozen-lockfile",

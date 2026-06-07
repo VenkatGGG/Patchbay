@@ -1,6 +1,6 @@
 FROM node:25-alpine AS base
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@10.24.0
 
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -16,4 +16,3 @@ ENV NODE_ENV=production
 COPY --from=build /app /app
 EXPOSE 3000
 CMD ["sh", "-c", "pnpm --filter @patchbay/web db:migrate && pnpm --filter @patchbay/web start -- --hostname 0.0.0.0"]
-
