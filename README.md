@@ -130,6 +130,7 @@ pnpm check
 
 - Secret guard for tracked files.
 - Env template completeness check.
+- Production dashboard smoke test against `next start`.
 - Next.js typecheck.
 - Next.js production build.
 - Go agent tests.
