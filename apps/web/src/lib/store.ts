@@ -58,6 +58,7 @@ export type PatchbayStore = {
   enrollAgent(input: EnrollAgentInput): Promise<Agent>;
   createSession(input: CreateSessionInput): Promise<DebugSession>;
   getSession(sessionId: string): Promise<DebugSession | undefined>;
+  closeSession(sessionId: string, actor?: string): Promise<DebugSession>;
   createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]>;
   claimTasks(agentId: string): Promise<DiagnosticTask[]>;
   addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent>;
@@ -196,6 +197,40 @@ class MemoryStore implements PatchbayStore {
     return this.sessions.get(sessionId);
   }
 
+  async closeSession(sessionId: string, actor = "operator"): Promise<DebugSession> {
+    this.expireSessions();
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+    if (session.status !== "active") {
+      throw new Error("Session is not active");
+    }
+
+    const closedAt = now();
+    const closedSession: DebugSession = { ...session, status: "closed" };
+    let deniedTasks = 0;
+    this.sessions.set(session.id, closedSession);
+
+    for (const task of this.tasks.values()) {
+      if (
+        task.sessionId === session.id &&
+        (task.status === "queued" || task.status === "running")
+      ) {
+        this.tasks.set(task.id, {
+          ...task,
+          status: "denied",
+          completedAt: closedAt,
+          error: "Session closed"
+        });
+        deniedTasks += 1;
+      }
+    }
+
+    this.addAudit("session.closed", actor, session.id, { deniedTasks });
+    return closedSession;
+  }
+
   async createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]> {
     const session = await this.getSession(sessionId);
     if (!session || session.status !== "active") {
@@ -242,11 +277,19 @@ class MemoryStore implements PatchbayStore {
   }
 
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
+    this.expireSessions();
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error(`Unknown task: ${taskId}`);
     }
     ensureTaskAssignedToAgent(task, input.agentId);
+    const session = this.sessions.get(task.sessionId);
+    if (!session) {
+      throw new Error(`Unknown session: ${task.sessionId}`);
+    }
+    if (session.status !== "active") {
+      throw new Error("Session is not active");
+    }
 
     const event: TaskEvent = {
       id: makeId("evt"),
@@ -457,6 +500,61 @@ class PostgresStore implements PatchbayStore {
     return result.rows[0] ? toSession(result.rows[0]) : undefined;
   }
 
+  async closeSession(sessionId: string, actor = "operator"): Promise<DebugSession> {
+    await this.expireSessions();
+    const sessionResult = await this.pool.query("SELECT * FROM sessions WHERE id = $1", [
+      sessionId
+    ]);
+    const session = sessionResult.rows[0] ? toSession(sessionResult.rows[0]) : undefined;
+    if (!session) {
+      throw new Error(`Unknown session: ${sessionId}`);
+    }
+    if (session.status !== "active") {
+      throw new Error("Session is not active");
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const closedResult = await client.query(
+        "UPDATE sessions SET status = 'closed' WHERE id = $1 RETURNING *",
+        [sessionId]
+      );
+      const deniedResult = await client.query(
+        `
+          UPDATE session_tasks
+          SET
+            status = 'denied',
+            completed_at = now(),
+            error = 'Session closed'
+          WHERE session_id = $1
+            AND status IN ('queued', 'running')
+          RETURNING id
+        `,
+        [sessionId]
+      );
+      await client.query(
+        `
+          INSERT INTO audit_log (id, action, actor, target, metadata)
+          VALUES ($1, 'session.closed', $2, $3, $4)
+        `,
+        [
+          makeId("aud"),
+          actor,
+          sessionId,
+          JSON.stringify({ deniedTasks: deniedResult.rowCount ?? 0 })
+        ]
+      );
+      await client.query("COMMIT");
+      return toSession(closedResult.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]> {
     const session = await this.getSession(sessionId);
     if (!session || session.status !== "active") {
@@ -531,8 +629,14 @@ class PostgresStore implements PatchbayStore {
   }
 
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
+    await this.expireSessions();
     const taskResult = await this.pool.query(
-      "SELECT * FROM session_tasks WHERE id = $1",
+      `
+        SELECT task.*, session.status AS session_status
+        FROM session_tasks task
+        JOIN sessions session ON session.id = task.session_id
+        WHERE task.id = $1
+      `,
       [taskId]
     );
     const task = taskResult.rows[0] ? toTask(taskResult.rows[0]) : undefined;
@@ -540,6 +644,9 @@ class PostgresStore implements PatchbayStore {
       throw new Error(`Unknown task: ${taskId}`);
     }
     ensureTaskAssignedToAgent(task, input.agentId);
+    if (taskResult.rows[0].session_status !== "active") {
+      throw new Error("Session is not active");
+    }
 
     const event: TaskEvent = {
       id: makeId("evt"),
@@ -726,7 +833,7 @@ const nextTaskState = (
       task.startedAt ??
       (nextStatus === "running" || nextStatus === "completed" ? eventCreatedAt : undefined),
     completedAt:
-      nextStatus === "completed" || nextStatus === "failed"
+      isTerminalTaskStatus(nextStatus)
         ? eventCreatedAt
         : task.completedAt,
     result: input.result ?? task.result,
@@ -739,6 +846,9 @@ const ensureTaskAssignedToAgent = (task: DiagnosticTask, agentId: string) => {
     throw new TaskAssignmentError(task.id, agentId);
   }
 };
+
+const isTerminalTaskStatus = (status: TaskStatus) =>
+  status === "completed" || status === "failed" || status === "denied";
 
 const paramsFor = (capability: Capability): Record<string, unknown> => {
   switch (capability) {

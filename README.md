@@ -34,6 +34,7 @@ The initial demo will focus on an on-call latency investigation:
 3. Stream task events back to the control plane.
 4. Summarize evidence with Gemini.
 5. Export an auditable incident report.
+6. Close the session when the diagnostic window should end.
 
 No remediation actions execute in v0.
 
@@ -202,6 +203,19 @@ TAILSCALE_OAUTH_CLIENT_SECRET
 persistence, operator auth, enrollment auth, agent API auth, Gemini, and
 Tailscale automation. The dashboard renders the same checks in the Runtime
 Posture area so local/demo gaps are visible before production-like use.
+
+### Session Close
+
+Operators can close active debug sessions from the dashboard or API:
+
+```bash
+curl -X POST http://localhost:3000/api/sessions/<session-id>/close \
+  -H "authorization: Bearer $PATCHBAY_OPERATOR_TOKEN"
+```
+
+Closing a session marks queued or running tasks as denied, records a
+`session.closed` audit event, prevents further diagnostic dispatch for that
+session, and rejects late agent task events.
 
 ### Agent Enrollment Tokens
 

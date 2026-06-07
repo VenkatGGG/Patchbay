@@ -4,6 +4,7 @@ import {
   Activity,
   Boxes,
   Cable,
+  CircleStop,
   FileDown,
   FileText,
   Gauge,
@@ -80,7 +81,7 @@ export function ControlPlaneDashboard({
   const [sessionName, setSessionName] = useState("checkout latency investigation");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [busyAction, setBusyAction] = useState<
-    "refresh" | "session" | "diagnostic" | "synthesis" | "report" | null
+    "refresh" | "session" | "diagnostic" | "synthesis" | "report" | "close" | null
   >(null);
   const [operatorToken, setOperatorToken] = useState("");
   const [pendingOperatorToken, setPendingOperatorToken] = useState("");
@@ -108,6 +109,7 @@ export function ControlPlaneDashboard({
   const selectedCompletedTasks = selectedTasks.filter(
     (task) => task.status === "completed" && task.result !== undefined
   );
+  const selectedSessionIsActive = selectedSession?.status === "active";
   const latestSynthesis = selectedSession
     ? state.syntheses
         .filter((synthesis) => synthesis.sessionId === selectedSession.id)
@@ -197,7 +199,7 @@ export function ControlPlaneDashboard({
   }
 
   async function runDiagnostic() {
-    if (!selectedSession) return;
+    if (!selectedSessionIsActive) return;
     setBusyAction("diagnostic");
     try {
       const response = await fetchControlPlane(
@@ -271,6 +273,29 @@ export function ControlPlaneDashboard({
 
       setNotice(`Downloaded report for ${selectedSession.name}`);
       setError("");
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function closeSession() {
+    if (!selectedSessionIsActive) return;
+    setBusyAction("close");
+    try {
+      const response = await fetchControlPlane(
+        `/api/sessions/${selectedSession.id}/close`,
+        {
+          method: "POST"
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Session close failed with ${response.status}`);
+      }
+      setNotice(`Closed ${selectedSession.name}`);
+      setError("");
+      await refresh();
     } catch (caught) {
       setError(messageFrom(caught));
     } finally {
@@ -364,7 +389,7 @@ export function ControlPlaneDashboard({
               className="button"
               type="button"
               onClick={runDiagnostic}
-              disabled={!selectedSession || busyAction !== null}
+              disabled={!selectedSessionIsActive || busyAction !== null}
             >
               <Activity size={16} />
               {busyAction === "diagnostic" ? "Queueing" : "Run Latency Diagnostic"}
@@ -386,6 +411,15 @@ export function ControlPlaneDashboard({
             >
               <FileDown size={16} />
               {busyAction === "report" ? "Exporting" : "Export Report"}
+            </button>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={closeSession}
+              disabled={!selectedSessionIsActive || busyAction !== null}
+            >
+              <CircleStop size={16} />
+              {busyAction === "close" ? "Closing" : "Close Session"}
             </button>
           </div>
         </div>
@@ -519,6 +553,7 @@ export function ControlPlaneDashboard({
                     <Metric label="Running" value={taskSummary.running} />
                     <Metric label="Queued" value={taskSummary.queued} />
                     <Metric label="Failed" value={taskSummary.failed} />
+                    <Metric label="Denied" value={taskSummary.denied} />
                   </div>
                 </div>
               ) : (
@@ -850,6 +885,7 @@ function summarizeTasks(tasks: DiagnosticTask[]) {
   return {
     completed: tasks.filter((task) => task.status === "completed").length,
     failed: tasks.filter((task) => task.status === "failed").length,
+    denied: tasks.filter((task) => task.status === "denied").length,
     queued: tasks.filter((task) => task.status === "queued").length,
     running: tasks.filter((task) => task.status === "running").length
   };

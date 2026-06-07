@@ -45,7 +45,8 @@ Control plane:
   rejected and require re-enrollment.
 - Task event ingestion verifies the signed agent identity is assigned to the
   task being updated.
-- Session expiration.
+- Session expiration and explicit operator close.
+- Closed or expired sessions reject late task event writes.
 - Capability allowlists.
 - Task audit log.
 - Environment-scoped agents.

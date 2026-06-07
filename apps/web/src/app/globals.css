@@ -386,7 +386,7 @@ button {
 
 .health-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(90px, 1fr));
+  grid-template-columns: repeat(5, minmax(80px, 1fr));
   gap: 10px;
 }
 
@@ -486,6 +486,8 @@ button {
 }
 
 .pill.warning,
+.pill.closed,
+.pill.denied,
 .pill.idle,
 .pill.local {
   color: var(--amber);

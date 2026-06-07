@@ -64,7 +64,9 @@ task polling and event ingestion. `PATCHBAY_REQUIRE_AGENT_TOKEN=true` enforces
 this post-enrollment token path; local development can leave it disabled. Agents
 refresh their signed API token through an authenticated agent endpoint before
 expiry. Task event ingestion also verifies the authenticated agent owns the task
-before accepting status or result updates.
+before accepting status or result updates. Closed or expired sessions reject
+late task events so session-scoped authority ends at the control plane boundary,
+not just in the dashboard.
 
 ## Agent
 
@@ -128,6 +130,9 @@ DebugSession
 ```
 
 Agents should reject work outside an active session.
+Operators can close active sessions early. Closing a session marks queued or
+running tasks as denied, records a `session.closed` audit event, stops future
+diagnostic dispatch for that session, and rejects late task event writes.
 
 ## Tailscale Model
 

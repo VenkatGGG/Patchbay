@@ -40,6 +40,7 @@ export function domainErrorResponse(error: unknown) {
   if (
     error.message.startsWith("Unknown environment:") ||
     error.message.startsWith("Unknown agent:") ||
+    error.message.startsWith("Unknown session:") ||
     error.message.startsWith("Unknown task:")
   ) {
     return NextResponse.json({ error: error.message }, { status: 404 });

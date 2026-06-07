@@ -65,6 +65,7 @@ async function main() {
     "Session Control",
     "Diagnostic Results",
     "Gemini Synthesis",
+    "Close Session",
     "Operator token required",
     "Paste operator token",
     "Clear operator token"

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyAgentAuthorization } from "@/lib/agent-auth";
-import { parseJsonBody } from "@/lib/api-validation";
+import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
 import { store, TaskAssignmentError } from "@/lib/store";
 
 const eventSchema = z.object({
@@ -41,6 +41,8 @@ export async function POST(
     if (error instanceof Error && error.message.startsWith("Unknown task:")) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
+    const response = domainErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 }

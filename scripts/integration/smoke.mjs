@@ -327,6 +327,96 @@ async function main() {
     "expected Tailscale tags to avoid underscores"
   );
 
+  const closeSessionResponse = await postJson(
+    "/api/sessions",
+    {
+      environmentId: "env_local",
+      name: "integration close session",
+      requestedBy: "integration-test",
+      ttlMinutes: 30
+    },
+    operatorHeaders()
+  );
+  assert(closeSessionResponse.status === 201, "expected close session creation");
+  const closeSessionId = closeSessionResponse.body.id;
+  assert(closeSessionId, "expected close session id");
+
+  await expectStatus(
+    "unauthenticated session close is rejected",
+    postJson(`/api/sessions/${closeSessionId}/close`, {}),
+    401
+  );
+
+  const closeDiagnosticResponse = await postJson(
+    `/api/sessions/${closeSessionId}/diagnostics`,
+    { scenario: "latency_spike" },
+    operatorHeaders()
+  );
+  assert(
+    closeDiagnosticResponse.status === 201,
+    "expected close diagnostic creation"
+  );
+  assert(
+    closeDiagnosticResponse.body.length === 1,
+    `expected one queued close diagnostic task, got ${closeDiagnosticResponse.body.length}`
+  );
+  const closeTask = closeDiagnosticResponse.body[0];
+  assert(closeTask?.id, "expected close diagnostic task id");
+
+  const closeResponse = await postJson(
+    `/api/sessions/${closeSessionId}/close`,
+    {},
+    operatorHeaders()
+  );
+  assert(closeResponse.status === 200, "expected session close to return 200");
+  assert(closeResponse.body.status === "closed", "expected closed session status");
+
+  await expectStatus(
+    "closed session diagnostic request is rejected",
+    postJson(
+      `/api/sessions/${closeSessionId}/diagnostics`,
+      { scenario: "latency_spike" },
+      operatorHeaders()
+    ),
+    409
+  );
+
+  await expectStatus(
+    "late task event for closed session is rejected",
+    postJson(
+      `/api/agent/tasks/${closeTask.id}/events`,
+      {
+        agentId: redactionAgentResponse.body.agent.id,
+        level: "info",
+        message: "Closed session event should be rejected",
+        status: "completed",
+        result: { ignored: true }
+      },
+      {
+        Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+      }
+    ),
+    409
+  );
+
+  const closedState = await getJson("/api/state", operatorHeaders());
+  const closedSession = closedState.sessions.find(
+    (session) => session.id === closeSessionId
+  );
+  assert(closedSession?.status === "closed", "expected closed session in state");
+  const deniedCloseTask = closedState.tasks.find((task) => task.id === closeTask.id);
+  assert(deniedCloseTask?.status === "denied", "expected close task to be denied");
+  assert(
+    deniedCloseTask.error === "Session closed",
+    "expected close task to record closure reason"
+  );
+  assert(
+    closedState.audit.some(
+      (event) => event.action === "session.closed" && event.target === closeSessionId
+    ),
+    "expected session close audit event"
+  );
+
   const agent = spawnProcess(
     "go",
     ["run", "./agent/cmd/patchbay-agent"],
