@@ -11,6 +11,7 @@ const fakeSummary =
   "Summary\nFake Gemini synthesis completed from redacted Patchbay evidence.";
 const requests = [];
 const children = [];
+let fakeMode = "success";
 let fakeGemini;
 let fakeGeminiBaseUrl;
 
@@ -165,6 +166,51 @@ async function main() {
     "expected raw secret not to be sent to Gemini"
   );
 
+  const failureCases = [
+    {
+      mode: "status-error",
+      label: "status error"
+    },
+    {
+      mode: "network-failure",
+      label: "network failure"
+    },
+    {
+      mode: "invalid-json",
+      label: "invalid JSON"
+    },
+    {
+      mode: "missing-text",
+      label: "missing text"
+    }
+  ];
+
+  for (const failureCase of failureCases) {
+    fakeMode = failureCase.mode;
+    const failureResponse = await synthesizeSession(sessionResponse.body.id);
+    assert(
+      failureResponse.status === 201,
+      `expected ${failureCase.label} fallback synthesis to return 201, got ${failureResponse.status}`
+    );
+    assert(
+      failureResponse.body.provider === `gemini:${geminiModel}:offline-fallback`,
+      `expected ${failureCase.label} fallback provider, got ${failureResponse.body.provider}`
+    );
+    assert(
+      failureResponse.body.summary.includes("Gemini synthesis was unavailable"),
+      `expected ${failureCase.label} fallback summary to explain provider unavailability`
+    );
+    assert(
+      !failureResponse.body.summary.includes("should_not_be_sent_to_gemini"),
+      `expected ${failureCase.label} fallback summary not to expose raw secret`
+    );
+  }
+
+  assert(
+    requests.length === 1 + failureCases.length,
+    `expected ${1 + failureCases.length} fake Gemini requests after failures, got ${requests.length}`
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -177,6 +223,10 @@ async function main() {
       2
     )
   );
+}
+
+function synthesizeSession(sessionId) {
+  return postJson(`/api/sessions/${sessionId}/synthesize`, {}, operatorHeaders());
 }
 
 function createFakeGeminiApi() {
@@ -195,6 +245,34 @@ function createFakeGeminiApi() {
       request.method === "POST" &&
       url.pathname === `/v1beta/models/${geminiModel}:generateContent`
     ) {
+      if (fakeMode === "network-failure") {
+        request.socket.destroy();
+        return;
+      }
+
+      if (fakeMode === "status-error") {
+        jsonResponse(response, 503, { error: "temporary fake Gemini outage" });
+        return;
+      }
+
+      if (fakeMode === "invalid-json") {
+        textResponse(response, 200, "not-json");
+        return;
+      }
+
+      if (fakeMode === "missing-text") {
+        jsonResponse(response, 200, {
+          candidates: [
+            {
+              content: {
+                parts: [{}]
+              }
+            }
+          ]
+        });
+        return;
+      }
+
       jsonResponse(response, 200, {
         candidates: [
           {
@@ -214,6 +292,11 @@ function createFakeGeminiApi() {
 function jsonResponse(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function textResponse(response, status, body) {
+  response.writeHead(status, { "content-type": "text/plain" });
+  response.end(body);
 }
 
 async function readBody(request) {
