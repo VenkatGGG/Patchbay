@@ -22,6 +22,7 @@
     "test:ui": "node scripts/integration/ui-smoke.mjs",
     "test:integration": "node scripts/integration/smoke.mjs",
     "test:integration:postgres": "PATCHBAY_INTEGRATION_STORAGE=postgres node scripts/integration/smoke.mjs",
+    "test:postgres:schema": "pnpm --filter @patchbay/web exec node scripts/postgres-schema-smoke.mjs",
     "test:task-timeout": "node scripts/integration/task-timeout.mjs",
     "test:task-timeout:postgres": "PATCHBAY_TASK_TIMEOUT_STORAGE=postgres node scripts/integration/task-timeout.mjs",
     "test:llm:fallback": "node scripts/integration/llm-fallback.mjs",

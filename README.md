@@ -138,6 +138,7 @@ pnpm check
 - Env template completeness check.
 - Local env envelope generation and backfill check.
 - Compose security check.
+- Postgres schema constraint static check.
 - Next.js typecheck.
 - Next.js production build.
 - Production dashboard smoke test against `next start`.
@@ -159,7 +160,12 @@ Run the same end-to-end test against Postgres:
 pnpm db:local
 pnpm test:integration:postgres
 pnpm test:task-timeout:postgres
+pnpm test:postgres:schema
 ```
+
+`pnpm test:postgres:schema` applies the schema idempotently, introspects the
+installed constraints, and verifies Postgres rejects invalid providers, task
+statuses, event levels, and non-read-only capabilities.
 
 After `GEMINI_API_KEY` is present in `apps/web/.env.local`, validate the live
 Gemini path:
