@@ -10,7 +10,19 @@ export async function parseJsonBody<T>(
   schema: z.ZodType<T>,
   error = "Invalid request body"
 ): Promise<ParseResult<T>> {
-  const json = await request.json().catch(() => ({}));
+  let json: unknown;
+  try {
+    json = await request.json();
+  } catch {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Malformed JSON request body" },
+        { status: 400 }
+      )
+    };
+  }
+
   const parsed = await schema.safeParseAsync(json);
 
   if (parsed.success) {

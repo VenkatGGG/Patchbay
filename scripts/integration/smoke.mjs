@@ -200,6 +200,13 @@ async function main() {
     400
   );
 
+  await expectError(
+    "malformed environment JSON is rejected",
+    postRaw("/api/environments", '{"name":', operatorHeaders()),
+    400,
+    "Malformed JSON request body"
+  );
+
   await expectStatus(
     "invalid session creation request is rejected",
     postJson(
@@ -726,6 +733,15 @@ async function main() {
     400
   );
 
+  await expectError(
+    "malformed task event JSON is rejected",
+    postRaw(`/api/agent/tasks/${redactionTask.id}/events`, '{"agentId":', {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }),
+    400,
+    "Malformed JSON request body"
+  );
+
   const syntheticEnvSecret =
     "GITHUB_" +
     "TO" +
@@ -1166,9 +1182,33 @@ async function postJson(path, payload, headers = {}) {
   };
 }
 
+async function postRaw(path, body, headers = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...headers
+    },
+    body
+  });
+  return {
+    status: response.status,
+    body: await response.json().catch(() => ({}))
+  };
+}
+
 async function expectStatus(label, promise, status) {
   const response = await promise;
   assert(response.status === status, `${label}: expected ${status}, got ${response.status}`);
+}
+
+async function expectError(label, promise, status, error) {
+  const response = await promise;
+  assert(response.status === status, `${label}: expected ${status}, got ${response.status}`);
+  assert(
+    response.body.error === error,
+    `${label}: expected error ${JSON.stringify(error)}, got ${JSON.stringify(response.body.error)}`
+  );
 }
 
 function assert(condition, message) {
