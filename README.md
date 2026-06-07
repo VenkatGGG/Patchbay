@@ -144,6 +144,19 @@ pnpm db:up
 pnpm test:integration:postgres
 ```
 
+After `GEMINI_API_KEY` is present in `apps/web/.env.local`, validate the live
+Gemini path:
+
+```bash
+pnpm test:gemini:live
+```
+
+This starts a secured local control plane, checks that readiness reports Gemini
+as configured, creates one read-only diagnostic session, and fails unless
+synthesis returns the live `gemini:<model>` provider instead of the offline
+fallback. The command is intentionally not part of `pnpm check` because it calls
+the external Gemini API.
+
 ### Readiness Posture
 
 `/api/ready` returns service liveness plus structured readiness checks for

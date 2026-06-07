@@ -16,6 +16,7 @@
     "test:compose": "node scripts/checks/compose-security.mjs",
     "test:integration": "node scripts/integration/smoke.mjs",
     "test:integration:postgres": "PATCHBAY_INTEGRATION_STORAGE=postgres node scripts/integration/smoke.mjs",
+    "test:gemini:live": "node scripts/integration/live-gemini.mjs",
     "check": "pnpm test:secrets && pnpm test:env && pnpm test:compose && pnpm web:typecheck && pnpm web:build && pnpm agent:test && pnpm test:integration"
   }
 }
