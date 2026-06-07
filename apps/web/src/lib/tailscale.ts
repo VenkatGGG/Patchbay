@@ -13,6 +13,13 @@ type TailscaleOAuthToken = {
   expires_in: number;
 };
 
+export class TailscaleIntegrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TailscaleIntegrationError";
+  }
+}
+
 export async function createAgentAuthKey(environmentId: string): Promise<TailscaleAuthKey> {
   const { apiBaseUrl, tailnet, clientId, clientSecret } = tailscaleConfig();
   const tags = ["tag:patchbay-agent", tailscaleEnvironmentTag(environmentId)];
@@ -40,10 +47,18 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
   );
 
   if (!tokenResponse.ok) {
-    throw new Error(`Tailscale token request failed: ${tokenResponse.status}`);
+    throw new TailscaleIntegrationError(
+      `Tailscale token request failed: ${tokenResponse.status}`
+    );
   }
 
-  const token = (await tokenResponse.json()) as TailscaleOAuthToken;
+  const token = await tailscaleJson<TailscaleOAuthToken>(tokenResponse, "token");
+  if (!token.access_token) {
+    throw new TailscaleIntegrationError(
+      "Tailscale token response did not include access_token"
+    );
+  }
+
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
   const keyResponse = await fetch(
     tailscaleApiUrl(apiBaseUrl, `/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`),
@@ -71,13 +86,21 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
   );
 
   if (!keyResponse.ok) {
-    throw new Error(`Tailscale auth key request failed: ${keyResponse.status}`);
+    throw new TailscaleIntegrationError(
+      `Tailscale auth key request failed: ${keyResponse.status}`
+    );
   }
 
-  const payload = (await keyResponse.json()) as {
+  const payload = await tailscaleJson<{
     id?: string;
     key: string;
-  };
+  }>(keyResponse, "auth key");
+  if (!payload.key) {
+    throw new TailscaleIntegrationError(
+      "Tailscale auth key response did not include key"
+    );
+  }
+
   return {
     available: true,
     id: payload.id,
@@ -120,4 +143,14 @@ function tailscaleConfig() {
 
 function tailscaleApiUrl(apiBaseUrl: string, path: string) {
   return `${apiBaseUrl}${path}`;
+}
+
+async function tailscaleJson<T>(response: Response, label: string): Promise<T> {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new TailscaleIntegrationError(
+      `Tailscale ${label} response was not valid JSON`
+    );
+  }
 }

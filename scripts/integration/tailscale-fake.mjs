@@ -15,6 +15,7 @@ const authKeyId = "fake-auth-key-id";
 const authKey = "tskey-auth-fake-local-1234567890";
 const requests = [];
 const children = [];
+let fakeMode = "success";
 let fakeTailscale;
 let fakeTailscaleBaseUrl;
 
@@ -70,15 +71,9 @@ async function main() {
   );
   assert(enrollmentTokenResponse.status === 200, "expected enrollment token minting");
 
-  const agentResponse = await postJson(
-    "/api/agent/enroll",
-    {
-      environmentId: "env_local",
-      name: "fake-tailscale-agent",
-      version: "test",
-      capabilities: ["system.info"]
-    },
-    enrollmentHeaders(enrollmentTokenResponse.body.token)
+  const agentResponse = await enrollAgent(
+    "fake-tailscale-agent",
+    enrollmentTokenResponse.body.token
   );
   assert(
     agentResponse.status === 201,
@@ -143,6 +138,94 @@ async function main() {
     "expected auth key environment tag"
   );
 
+  fakeMode = "missing-token";
+  const missingTokenAgentResponse = await enrollAgent(
+    "fake-tailscale-missing-token-agent",
+    enrollmentTokenResponse.body.token
+  );
+  assert(
+    missingTokenAgentResponse.status === 502,
+    `expected missing OAuth token response 502, got ${missingTokenAgentResponse.status}`
+  );
+  assert(
+    missingTokenAgentResponse.body.error === "Tailscale enrollment failed",
+    "expected sanitized Tailscale failure error"
+  );
+  assert(
+    missingTokenAgentResponse.body.detail ===
+      "Tailscale token response did not include access_token",
+    "expected missing access token detail"
+  );
+
+  fakeMode = "invalid-token-json";
+  const invalidTokenJsonAgentResponse = await enrollAgent(
+    "fake-tailscale-invalid-token-json-agent",
+    enrollmentTokenResponse.body.token
+  );
+  assert(
+    invalidTokenJsonAgentResponse.status === 502,
+    `expected invalid OAuth JSON response 502, got ${invalidTokenJsonAgentResponse.status}`
+  );
+  assert(
+    invalidTokenJsonAgentResponse.body.detail ===
+      "Tailscale token response was not valid JSON",
+    "expected invalid OAuth JSON detail"
+  );
+
+  fakeMode = "missing-key";
+  const missingKeyAgentResponse = await enrollAgent(
+    "fake-tailscale-missing-key-agent",
+    enrollmentTokenResponse.body.token
+  );
+  assert(
+    missingKeyAgentResponse.status === 502,
+    `expected missing auth key response 502, got ${missingKeyAgentResponse.status}`
+  );
+  assert(
+    missingKeyAgentResponse.body.error === "Tailscale enrollment failed",
+    "expected sanitized auth key failure error"
+  );
+  assert(
+    missingKeyAgentResponse.body.detail ===
+      "Tailscale auth key response did not include key",
+    "expected missing auth key detail"
+  );
+
+  fakeMode = "invalid-key-json";
+  const invalidKeyJsonAgentResponse = await enrollAgent(
+    "fake-tailscale-invalid-key-json-agent",
+    enrollmentTokenResponse.body.token
+  );
+  assert(
+    invalidKeyJsonAgentResponse.status === 502,
+    `expected invalid key JSON response 502, got ${invalidKeyJsonAgentResponse.status}`
+  );
+  assert(
+    invalidKeyJsonAgentResponse.body.detail ===
+      "Tailscale auth key response was not valid JSON",
+    "expected invalid auth key JSON detail"
+  );
+
+  const failureStateResponse = await getResponse("/api/state", operatorHeaders());
+  assert(failureStateResponse.status === 200, "expected state after Tailscale failures");
+  const failedAgentNames = new Set(failureStateResponse.body.agents.map((agent) => agent.name));
+  assert(
+    !failedAgentNames.has("fake-tailscale-missing-token-agent"),
+    "expected missing-token Tailscale failure not to persist an agent"
+  );
+  assert(
+    !failedAgentNames.has("fake-tailscale-missing-key-agent"),
+    "expected missing-key Tailscale failure not to persist an agent"
+  );
+  assert(
+    !failedAgentNames.has("fake-tailscale-invalid-token-json-agent"),
+    "expected invalid-token-json Tailscale failure not to persist an agent"
+  );
+  assert(
+    !failedAgentNames.has("fake-tailscale-invalid-key-json-agent"),
+    "expected invalid-key-json Tailscale failure not to persist an agent"
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -157,6 +240,19 @@ async function main() {
   );
 }
 
+async function enrollAgent(name, token) {
+  return postJson(
+    "/api/agent/enroll",
+    {
+      environmentId: "env_local",
+      name,
+      version: "test",
+      capabilities: ["system.info"]
+    },
+    enrollmentHeaders(token)
+  );
+}
+
 function createFakeTailscaleApi() {
   return createServer(async (request, response) => {
     const body = await readBody(request);
@@ -168,6 +264,19 @@ function createFakeTailscaleApi() {
     });
 
     if (request.method === "POST" && request.url === "/api/v2/oauth/token") {
+      if (fakeMode === "invalid-token-json") {
+        textResponse(response, 200, "not-json");
+        return;
+      }
+
+      if (fakeMode === "missing-token") {
+        jsonResponse(response, 200, {
+          token_type: "Bearer",
+          expires_in: 3600
+        });
+        return;
+      }
+
       jsonResponse(response, 200, {
         access_token: accessToken,
         token_type: "Bearer",
@@ -180,6 +289,18 @@ function createFakeTailscaleApi() {
       request.method === "POST" &&
       request.url === `/api/v2/tailnet/${tailnet}/keys`
     ) {
+      if (fakeMode === "invalid-key-json") {
+        textResponse(response, 200, "not-json");
+        return;
+      }
+
+      if (fakeMode === "missing-key") {
+        jsonResponse(response, 200, {
+          id: authKeyId
+        });
+        return;
+      }
+
       jsonResponse(response, 200, {
         id: authKeyId,
         key: authKey
@@ -194,6 +315,11 @@ function createFakeTailscaleApi() {
 function jsonResponse(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function textResponse(response, status, body) {
+  response.writeHead(status, { "content-type": "text/plain" });
+  response.end(body);
 }
 
 async function readBody(request) {

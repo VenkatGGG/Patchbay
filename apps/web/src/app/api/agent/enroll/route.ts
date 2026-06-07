@@ -6,7 +6,11 @@ import {
   enrollmentTokenFromAuthorization,
   verifyEnrollmentToken
 } from "@/lib/enrollment-token";
-import { createAgentAuthKey } from "@/lib/tailscale";
+import {
+  createAgentAuthKey,
+  TailscaleIntegrationError,
+  type TailscaleAuthKey
+} from "@/lib/tailscale";
 import { store } from "@/lib/store";
 import { READ_ONLY_CAPABILITIES } from "@/lib/types";
 
@@ -51,8 +55,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let authKey: TailscaleAuthKey;
+  try {
+    authKey = await createAgentAuthKey(body.environmentId);
+  } catch (error) {
+    if (error instanceof TailscaleIntegrationError) {
+      return NextResponse.json(
+        {
+          error: "Tailscale enrollment failed",
+          detail: error.message
+        },
+        { status: 502 }
+      );
+    }
+    throw error;
+  }
+
   let agent;
-  const authKey = await createAgentAuthKey(body.environmentId);
   try {
     agent = await store.enrollAgent({
       ...body,
