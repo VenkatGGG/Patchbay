@@ -157,6 +157,20 @@ synthesis returns the live `gemini:<model>` provider instead of the offline
 fallback. The command is intentionally not part of `pnpm check` because it calls
 the external Gemini API.
 
+After `TAILSCALE_TAILNET`, `TAILSCALE_OAUTH_CLIENT_ID`, and
+`TAILSCALE_OAUTH_CLIENT_SECRET` are present in `apps/web/.env.local`, validate
+the live Tailscale path:
+
+```bash
+pnpm test:tailscale:live
+```
+
+This starts a secured local control plane, checks that readiness reports
+Tailscale as configured, and fails unless agent enrollment mints a tagged,
+ephemeral, non-reusable Tailscale auth key through the real OAuth API. The
+command does not print the auth key and is intentionally not part of
+`pnpm check`.
+
 ### Readiness Posture
 
 `/api/ready` returns service liveness plus structured readiness checks for

@@ -14,7 +14,7 @@ type TailscaleOAuthToken = {
 
 export async function createAgentAuthKey(environmentId: string): Promise<TailscaleAuthKey> {
   const { tailnet, clientId, clientSecret } = tailscaleConfig();
-  const tags = ["tag:patchbay-agent", `tag:patchbay-${environmentId}`];
+  const tags = ["tag:patchbay-agent", tailscaleEnvironmentTag(environmentId)];
 
   if (!tailnet || !clientId || !clientSecret) {
     return {
@@ -78,6 +78,15 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
     tags,
     expiresAt
   };
+}
+
+export function tailscaleEnvironmentTag(environmentId: string) {
+  const normalized = environmentId
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return `tag:patchbay-${normalized || "environment"}`;
 }
 
 export function tailscaleRuntimeStatus() {

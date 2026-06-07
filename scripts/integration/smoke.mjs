@@ -156,6 +156,14 @@ async function main() {
   );
   assert(redactionAgentResponse.status === 201, "expected redaction agent enrollment");
   assert(redactionAgentResponse.body.agentToken, "expected redaction agent token");
+  assert(
+    redactionAgentResponse.body.tailscale.tags.includes("tag:patchbay-env-local"),
+    "expected enrollment to normalize environment Tailscale tag"
+  );
+  assert(
+    redactionAgentResponse.body.tailscale.tags.every((tag) => !tag.includes("_")),
+    "expected Tailscale tags to avoid underscores"
+  );
 
   const agent = spawnProcess(
     "go",
