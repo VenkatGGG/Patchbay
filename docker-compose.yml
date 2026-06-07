@@ -1,4 +1,26 @@
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: patchbay-web
+    environment:
+      DATABASE_URL: postgres://patchbay:patchbay@postgres:5432/patchbay
+      PATCHBAY_STORAGE: postgres
+      PATCHBAY_LLM_PROVIDER: ${PATCHBAY_LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      PATCHBAY_ENROLLMENT_SECRET: ${PATCHBAY_ENROLLMENT_SECRET:-change-me-local-secret}
+      PATCHBAY_REQUIRE_ENROLLMENT_TOKEN: ${PATCHBAY_REQUIRE_ENROLLMENT_TOKEN:-false}
+      TAILSCALE_TAILNET: ${TAILSCALE_TAILNET:-}
+      TAILSCALE_OAUTH_CLIENT_ID: ${TAILSCALE_OAUTH_CLIENT_ID:-}
+      TAILSCALE_OAUTH_CLIENT_SECRET: ${TAILSCALE_OAUTH_CLIENT_SECRET:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:18-alpine
     container_name: patchbay-postgres
@@ -18,4 +40,3 @@ services:
 
 volumes:
   patchbay-postgres:
-

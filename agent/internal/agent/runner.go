@@ -33,6 +33,16 @@ func Run(ctx context.Context, config Config, logger *slog.Logger) error {
 		"tailscale", enrollment.Tailscale.AuthKeyPreview,
 	)
 
+	if config.TailscaleUp {
+		if enrollment.Tailscale.AuthKey == "" {
+			logger.Warn("tailscale bootstrap skipped", "reason", "no auth key returned")
+		} else if err := tailscale.Up(ctx, enrollment.Tailscale.AuthKey, config.Name); err != nil {
+			logger.Warn("tailscale bootstrap failed", "error", err)
+		} else {
+			logger.Info("tailscale bootstrap completed")
+		}
+	}
+
 	ticker := time.NewTicker(config.PollInterval)
 	defer ticker.Stop()
 

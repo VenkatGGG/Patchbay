@@ -63,6 +63,12 @@ The default local database URL is:
 postgres://patchbay:patchbay@localhost:5432/patchbay
 ```
 
+Run the self-hosted web stack:
+
+```bash
+docker compose up --build
+```
+
 ### Agent Enrollment Tokens
 
 For local development, enrollment tokens are optional by default. To require
@@ -85,3 +91,14 @@ Run an agent with the token:
 ```bash
 PATCHBAY_ENROLLMENT_TOKEN=<token> pnpm agent:run
 ```
+
+### Optional Tailscale Bootstrap
+
+If the control plane is configured with Tailscale OAuth credentials, an agent can
+join Tailscale automatically after enrollment:
+
+```bash
+PATCHBAY_TAILSCALE_UP=true pnpm agent:run
+```
+
+This is disabled by default.

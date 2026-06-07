@@ -14,6 +14,7 @@ type Config struct {
 	EnvironmentID   string
 	Name            string
 	EnrollmentToken string
+	TailscaleUp     bool
 	PollInterval    time.Duration
 }
 
@@ -25,6 +26,7 @@ func ConfigFromEnv() (Config, error) {
 		EnvironmentID:   getenv("PATCHBAY_ENVIRONMENT_ID", "env_local"),
 		Name:            getenv("PATCHBAY_AGENT_NAME", hostname),
 		EnrollmentToken: getenv("PATCHBAY_ENROLLMENT_TOKEN", ""),
+		TailscaleUp:     getenv("PATCHBAY_TAILSCALE_UP", "false") == "true",
 	}
 
 	if config.Name == "" {

@@ -1,0 +1,13 @@
+.git
+.patchbay
+.DS_Store
+
+node_modules
+apps/web/node_modules
+apps/web/.next
+apps/web/next-env.d.ts
+apps/web/tsconfig.tsbuildinfo
+
+agent/bin
+tmp
+
