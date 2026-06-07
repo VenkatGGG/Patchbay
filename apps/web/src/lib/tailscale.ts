@@ -14,7 +14,7 @@ type TailscaleOAuthToken = {
 };
 
 export async function createAgentAuthKey(environmentId: string): Promise<TailscaleAuthKey> {
-  const { tailnet, clientId, clientSecret } = tailscaleConfig();
+  const { apiBaseUrl, tailnet, clientId, clientSecret } = tailscaleConfig();
   const tags = ["tag:patchbay-agent", tailscaleEnvironmentTag(environmentId)];
 
   if (!tailnet || !clientId || !clientSecret) {
@@ -25,16 +25,19 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
     };
   }
 
-  const tokenResponse = await fetch("https://api.tailscale.com/api/v2/oauth/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret
-    })
-  });
+  const tokenResponse = await fetch(
+    tailscaleApiUrl(apiBaseUrl, "/api/v2/oauth/token"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret
+      })
+    }
+  );
 
   if (!tokenResponse.ok) {
     throw new Error(`Tailscale token request failed: ${tokenResponse.status}`);
@@ -43,7 +46,7 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
   const token = (await tokenResponse.json()) as TailscaleOAuthToken;
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
   const keyResponse = await fetch(
-    `https://api.tailscale.com/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`,
+    tailscaleApiUrl(apiBaseUrl, `/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`),
     {
       method: "POST",
       headers: {
@@ -106,8 +109,15 @@ export function tailscaleRuntimeStatus() {
 
 function tailscaleConfig() {
   return {
+    apiBaseUrl: (
+      process.env.TAILSCALE_API_BASE_URL?.trim() || "https://api.tailscale.com"
+    ).replace(/\/+$/u, ""),
     tailnet: process.env.TAILSCALE_TAILNET?.trim(),
     clientId: process.env.TAILSCALE_OAUTH_CLIENT_ID?.trim(),
     clientSecret: process.env.TAILSCALE_OAUTH_CLIENT_SECRET?.trim()
   };
+}
+
+function tailscaleApiUrl(apiBaseUrl: string, path: string) {
+  return `${apiBaseUrl}${path}`;
 }

@@ -148,6 +148,8 @@ pnpm check
   synthesis.
 - Task timeout smoke test for stale running diagnostics.
 - Offline Gemini fallback smoke test.
+- Fake Tailscale OAuth/key-minting smoke test that verifies tagged, ephemeral,
+  non-reusable auth key requests without calling the real Tailscale API.
 
 Run the same end-to-end test against Postgres:
 
@@ -187,6 +189,9 @@ Tailscale as configured, and fails unless agent enrollment mints a tagged,
 ephemeral, non-reusable Tailscale auth key through the real OAuth API. The
 command does not print the auth key, revokes the generated key after validation,
 and is intentionally not part of `pnpm check`.
+
+`pnpm test:tailscale:fake` runs in `pnpm check` and exercises the same
+enrollment path against a local fake Tailscale API using `TAILSCALE_API_BASE_URL`.
 
 The same live checks can run from GitHub Actions using the manual
 `Live Validations` workflow. Configure these repository secrets before running
