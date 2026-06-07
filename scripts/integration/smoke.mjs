@@ -488,6 +488,23 @@ async function main() {
   assert(redactionTask?.id, "expected redaction agent diagnostic task");
 
   await expectStatus(
+    "agent cannot requeue an assigned task",
+    postJson(
+      `/api/agent/tasks/${redactionTask.id}/events`,
+      {
+        agentId: redactionAgentResponse.body.agent.id,
+        level: "info",
+        message: "Requeue attempt should be rejected",
+        status: "queued"
+      },
+      {
+        Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+      }
+    ),
+    409
+  );
+
+  await expectStatus(
     "invalid task event request is rejected",
     postJson(
       `/api/agent/tasks/${redactionTask.id}/events`,
@@ -534,6 +551,24 @@ async function main() {
     }
   );
   assert(redactionEventResponse.status === 201, "expected redaction fixture event");
+
+  await expectStatus(
+    "terminal task status rewrite is rejected",
+    postJson(
+      `/api/agent/tasks/${redactionTask.id}/events`,
+      {
+        agentId: redactionAgentResponse.body.agent.id,
+        level: "info",
+        message: "Terminal rewrite should be rejected",
+        status: "running",
+        result: { overwritten: true }
+      },
+      {
+        Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+      }
+    ),
+    409
+  );
 
   const secondAgentResponse = await postJson(
     "/api/agent/enroll",

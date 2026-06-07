@@ -49,6 +49,17 @@ export class TaskAssignmentError extends Error {
   }
 }
 
+export class TaskStatusTransitionError extends Error {
+  constructor(taskId: string, currentStatus: TaskStatus, nextStatus?: TaskStatus) {
+    super(
+      nextStatus
+        ? `Task ${taskId} cannot transition from ${currentStatus} to ${nextStatus}`
+        : `Task ${taskId} is already terminal with status ${currentStatus}`
+    );
+    this.name = "TaskStatusTransitionError";
+  }
+}
+
 export type PatchbayStore = {
   snapshot(): Promise<ControlPlaneState>;
   createEnvironment(
@@ -290,6 +301,7 @@ class MemoryStore implements PatchbayStore {
     if (session.status !== "active") {
       throw new Error("Session is not active");
     }
+    ensureTaskEventCanApply(task, input);
 
     const event: TaskEvent = {
       id: makeId("evt"),
@@ -647,6 +659,7 @@ class PostgresStore implements PatchbayStore {
     if (taskResult.rows[0].session_status !== "active") {
       throw new Error("Session is not active");
     }
+    ensureTaskEventCanApply(task, input);
 
     const event: TaskEvent = {
       id: makeId("evt"),
@@ -831,7 +844,9 @@ const nextTaskState = (
     status: nextStatus,
     startedAt:
       task.startedAt ??
-      (nextStatus === "running" || nextStatus === "completed" ? eventCreatedAt : undefined),
+      (nextStatus === "running" || isTerminalTaskStatus(nextStatus)
+        ? eventCreatedAt
+        : undefined),
     completedAt:
       isTerminalTaskStatus(nextStatus)
         ? eventCreatedAt
@@ -844,6 +859,23 @@ const nextTaskState = (
 const ensureTaskAssignedToAgent = (task: DiagnosticTask, agentId: string) => {
   if (task.agentId !== agentId) {
     throw new TaskAssignmentError(task.id, agentId);
+  }
+};
+
+const ensureTaskEventCanApply = (task: DiagnosticTask, input: AddTaskEventInput) => {
+  const mutatesTask =
+    input.status !== undefined || input.result !== undefined || input.error !== undefined;
+
+  if (!mutatesTask) {
+    return;
+  }
+
+  if (isTerminalTaskStatus(task.status)) {
+    throw new TaskStatusTransitionError(task.id, task.status, input.status);
+  }
+
+  if (input.status === "queued") {
+    throw new TaskStatusTransitionError(task.id, task.status, input.status);
   }
 };
 

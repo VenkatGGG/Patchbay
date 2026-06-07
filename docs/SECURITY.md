@@ -45,6 +45,7 @@ Control plane:
   rejected and require re-enrollment.
 - Task event ingestion verifies the signed agent identity is assigned to the
   task being updated.
+- Terminal task states cannot be rewritten by later agent events.
 - Session expiration and explicit operator close.
 - Closed or expired sessions reject late task event writes.
 - Capability allowlists.

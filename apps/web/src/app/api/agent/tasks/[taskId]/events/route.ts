@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyAgentAuthorization } from "@/lib/agent-auth";
 import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
-import { store, TaskAssignmentError } from "@/lib/store";
+import { store, TaskAssignmentError, TaskStatusTransitionError } from "@/lib/store";
 
 const eventSchema = z.object({
   agentId: z.string().min(1),
@@ -37,6 +37,9 @@ export async function POST(
   } catch (error) {
     if (error instanceof TaskAssignmentError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error instanceof TaskStatusTransitionError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     if (error instanceof Error && error.message.startsWith("Unknown task:")) {
       return NextResponse.json({ error: error.message }, { status: 404 });
