@@ -850,7 +850,7 @@ class PostgresStore implements PatchbayStore {
           error = $2
         WHERE status = 'running'
           AND started_at IS NOT NULL
-          AND started_at <= now() - ($1 || ' seconds')::interval
+          AND started_at <= now() - make_interval(secs => $1::int)
         RETURNING id, session_id, agent_id
       `,
       [timeoutSeconds, taskTimeoutMessage(timeoutSeconds)]

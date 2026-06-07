@@ -1,12 +1,26 @@
 import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
+const execFileAsync = promisify(execFile);
 const port = Number(process.env.PATCHBAY_TASK_TIMEOUT_PORT ?? 3107);
 const baseUrl = `http://127.0.0.1:${port}`;
+const storageMode = process.env.PATCHBAY_TASK_TIMEOUT_STORAGE ?? "memory";
+const databaseUrl =
+  process.env.PATCHBAY_TASK_TIMEOUT_DATABASE_URL ?? process.env.DATABASE_URL;
 const operatorToken = "task-timeout-operator-token";
 const children = [];
 
 async function main() {
+  if (storageMode === "postgres") {
+    assert(
+      databaseUrl,
+      "PATCHBAY_TASK_TIMEOUT_DATABASE_URL or DATABASE_URL is required for postgres task timeout tests"
+    );
+    await migrateDatabase(databaseUrl);
+  }
+
   const web = spawnProcess(
     "pnpm",
     [
@@ -21,8 +35,8 @@ async function main() {
       String(port)
     ],
     {
-      PATCHBAY_STORAGE: "memory",
-      DATABASE_URL: "",
+      PATCHBAY_STORAGE: storageMode,
+      DATABASE_URL: storageMode === "postgres" ? databaseUrl : "",
       PATCHBAY_REQUIRE_ENROLLMENT_TOKEN: "true",
       PATCHBAY_ENROLLMENT_SECRET: "task-timeout-enrollment-secret",
       PATCHBAY_REQUIRE_AGENT_TOKEN: "true",
@@ -37,6 +51,12 @@ async function main() {
   children.push(web);
 
   await waitForJson("/api/health");
+
+  const ready = await getJson("/api/ready");
+  assert(
+    ready.runtime.storage === storageMode,
+    `expected readiness storage ${storageMode}, got ${ready.runtime.storage}`
+  );
 
   const enrollmentTokenResponse = await postJson(
     "/api/environments/env_local/enrollment-token",
@@ -133,6 +153,7 @@ async function main() {
     JSON.stringify(
       {
         ok: true,
+        storage: storageMode,
         taskStatus: timedOutTask.status,
         error: timedOutTask.error
       },
@@ -140,6 +161,26 @@ async function main() {
       2
     )
   );
+}
+
+async function migrateDatabase(connectionString) {
+  const { stdout, stderr } = await execFileAsync(
+    "pnpm",
+    ["--filter", "@patchbay/web", "db:migrate"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DATABASE_URL: connectionString
+      }
+    }
+  );
+  if (stdout.trim()) {
+    process.stdout.write(`[migrate] ${stdout}`);
+  }
+  if (stderr.trim()) {
+    process.stderr.write(`[migrate] ${stderr}`);
+  }
 }
 
 function spawnProcess(command, args, env = {}) {

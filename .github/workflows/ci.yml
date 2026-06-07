@@ -61,5 +61,8 @@ jobs:
       - name: Run Postgres integration smoke test
         run: pnpm test:integration:postgres
 
+      - name: Run Postgres task timeout smoke test
+        run: pnpm test:task-timeout:postgres
+
       - name: Validate compose file
         run: docker compose config --quiet --no-env-resolution

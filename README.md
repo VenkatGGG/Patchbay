@@ -153,6 +153,7 @@ Run the same end-to-end test against Postgres:
 ```bash
 pnpm db:local
 pnpm test:integration:postgres
+pnpm test:task-timeout:postgres
 ```
 
 After `GEMINI_API_KEY` is present in `apps/web/.env.local`, validate the live
