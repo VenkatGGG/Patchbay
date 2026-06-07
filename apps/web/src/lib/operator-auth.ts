@@ -45,8 +45,8 @@ function bearerToken(header: string | null) {
     return undefined;
   }
 
-  const [scheme, token] = header.split(/\s+/, 2);
-  return scheme?.toLowerCase() === "bearer" ? token?.trim() : undefined;
+  const match = header.match(/^Bearer\s+([^\s]+)$/i);
+  return match?.[1];
 }
 
 function safeEqual(actual: string, expected: string) {

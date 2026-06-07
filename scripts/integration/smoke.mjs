@@ -96,6 +96,14 @@ async function main() {
   );
 
   await expectStatus(
+    "operator bearer token with trailing words is rejected",
+    getResponse("/api/state", {
+      Authorization: `Bearer ${operatorToken} trailing`
+    }),
+    401
+  );
+
+  await expectStatus(
     "unauthenticated token minting is rejected",
     postJson("/api/environments/env_local/enrollment-token", { ttlMinutes: 15 }),
     401
