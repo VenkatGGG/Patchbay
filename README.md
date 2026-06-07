@@ -148,6 +148,8 @@ pnpm check
   synthesis.
 - Task timeout smoke test for stale running diagnostics.
 - Offline Gemini fallback smoke test.
+- Fake Gemini synthesis smoke test that verifies provider success, request
+  shape, and redacted evidence without calling the real Gemini API.
 - Fake Tailscale OAuth/key-minting smoke test that verifies tagged, ephemeral,
   non-reusable auth key requests without calling the real Tailscale API.
 
@@ -175,6 +177,9 @@ the external Gemini API.
 Gemini calls are bounded by `GEMINI_TIMEOUT_MS` (default `30000`) and fall back
 to an offline synthesis if the provider is unavailable. The live validation still
 fails unless the response comes from the live `gemini:<model>` provider.
+
+`pnpm test:gemini:fake` runs in `pnpm check` and exercises the Gemini provider
+success path against a local fake API using `GEMINI_API_BASE_URL`.
 
 After `TAILSCALE_TAILNET`, `TAILSCALE_OAUTH_CLIENT_ID`, and
 `TAILSCALE_OAUTH_CLIENT_SECRET` are present in `apps/web/.env.local`, validate

@@ -24,9 +24,10 @@
     "test:task-timeout": "node scripts/integration/task-timeout.mjs",
     "test:task-timeout:postgres": "PATCHBAY_TASK_TIMEOUT_STORAGE=postgres node scripts/integration/task-timeout.mjs",
     "test:llm:fallback": "node scripts/integration/llm-fallback.mjs",
+    "test:gemini:fake": "node scripts/integration/gemini-fake.mjs",
     "test:tailscale:fake": "node scripts/integration/tailscale-fake.mjs",
     "test:gemini:live": "node scripts/integration/live-gemini.mjs",
     "test:tailscale:live": "node scripts/integration/live-tailscale.mjs",
-    "check": "pnpm test:secrets && pnpm test:env && pnpm test:env:local && pnpm test:compose && pnpm web:typecheck && pnpm web:build && pnpm test:ui && pnpm agent:test && pnpm agent:build && pnpm test:integration && pnpm test:task-timeout && pnpm test:llm:fallback && pnpm test:tailscale:fake"
+    "check": "pnpm test:secrets && pnpm test:env && pnpm test:env:local && pnpm test:compose && pnpm web:typecheck && pnpm web:build && pnpm test:ui && pnpm agent:test && pnpm agent:build && pnpm test:integration && pnpm test:task-timeout && pnpm test:llm:fallback && pnpm test:gemini:fake && pnpm test:tailscale:fake"
   }
 }
