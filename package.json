@@ -18,6 +18,7 @@
     "test:env": "node scripts/checks/env-template.mjs",
     "test:env:local": "node scripts/checks/local-env-generator.mjs",
     "test:compose": "node scripts/checks/compose-security.mjs",
+    "test:schema": "node scripts/checks/schema-constraints.mjs",
     "test:ui": "node scripts/integration/ui-smoke.mjs",
     "test:integration": "node scripts/integration/smoke.mjs",
     "test:integration:postgres": "PATCHBAY_INTEGRATION_STORAGE=postgres node scripts/integration/smoke.mjs",
@@ -28,6 +29,6 @@
     "test:tailscale:fake": "node scripts/integration/tailscale-fake.mjs",
     "test:gemini:live": "node scripts/integration/live-gemini.mjs",
     "test:tailscale:live": "node scripts/integration/live-tailscale.mjs",
-    "check": "pnpm test:secrets && pnpm test:env && pnpm test:env:local && pnpm test:compose && pnpm web:typecheck && pnpm web:build && pnpm test:ui && pnpm agent:test && pnpm agent:build && pnpm test:integration && pnpm test:task-timeout && pnpm test:llm:fallback && pnpm test:gemini:fake && pnpm test:tailscale:fake"
+    "check": "pnpm test:secrets && pnpm test:env && pnpm test:env:local && pnpm test:compose && pnpm test:schema && pnpm web:typecheck && pnpm web:build && pnpm test:ui && pnpm agent:test && pnpm agent:build && pnpm test:integration && pnpm test:task-timeout && pnpm test:llm:fallback && pnpm test:gemini:fake && pnpm test:tailscale:fake"
   }
 }

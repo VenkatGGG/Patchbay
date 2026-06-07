@@ -93,3 +93,141 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_environments_provider'
+      AND conrelid = 'environments'::regclass
+  ) THEN
+    ALTER TABLE environments
+      ADD CONSTRAINT chk_environments_provider
+      CHECK (provider IN ('any', 'aws', 'gcp', 'kubernetes', 'vm', 'docker'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_agents_status'
+      AND conrelid = 'agents'::regclass
+  ) THEN
+    ALTER TABLE agents
+      ADD CONSTRAINT chk_agents_status
+      CHECK (status IN ('online', 'idle', 'offline'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_agents_capabilities'
+      AND conrelid = 'agents'::regclass
+  ) THEN
+    ALTER TABLE agents
+      ADD CONSTRAINT chk_agents_capabilities
+      CHECK (
+        capabilities <@ ARRAY[
+          'workload.discover',
+          'cloud.metadata',
+          'system.info',
+          'process.list',
+          'disk.usage',
+          'network.connections',
+          'logs.search',
+          'docker.containers',
+          'kubernetes.resources'
+        ]::text[]
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_agents_tailscale_object'
+      AND conrelid = 'agents'::regclass
+  ) THEN
+    ALTER TABLE agents
+      ADD CONSTRAINT chk_agents_tailscale_object
+      CHECK (jsonb_typeof(tailscale) = 'object');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_sessions_mode'
+      AND conrelid = 'sessions'::regclass
+  ) THEN
+    ALTER TABLE sessions
+      ADD CONSTRAINT chk_sessions_mode
+      CHECK (mode = 'read_only');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_sessions_status'
+      AND conrelid = 'sessions'::regclass
+  ) THEN
+    ALTER TABLE sessions
+      ADD CONSTRAINT chk_sessions_status
+      CHECK (status IN ('active', 'expired', 'closed'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_sessions_allowed_capabilities'
+      AND conrelid = 'sessions'::regclass
+  ) THEN
+    ALTER TABLE sessions
+      ADD CONSTRAINT chk_sessions_allowed_capabilities
+      CHECK (
+        allowed_capabilities <@ ARRAY[
+          'workload.discover',
+          'cloud.metadata',
+          'system.info',
+          'process.list',
+          'disk.usage',
+          'network.connections',
+          'logs.search',
+          'docker.containers',
+          'kubernetes.resources'
+        ]::text[]
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_session_tasks_capability'
+      AND conrelid = 'session_tasks'::regclass
+  ) THEN
+    ALTER TABLE session_tasks
+      ADD CONSTRAINT chk_session_tasks_capability
+      CHECK (
+        capability IN (
+          'workload.discover',
+          'cloud.metadata',
+          'system.info',
+          'process.list',
+          'disk.usage',
+          'network.connections',
+          'logs.search',
+          'docker.containers',
+          'kubernetes.resources'
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_session_tasks_status'
+      AND conrelid = 'session_tasks'::regclass
+  ) THEN
+    ALTER TABLE session_tasks
+      ADD CONSTRAINT chk_session_tasks_status
+      CHECK (status IN ('queued', 'running', 'completed', 'failed', 'denied'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_task_events_level'
+      AND conrelid = 'task_events'::regclass
+  ) THEN
+    ALTER TABLE task_events
+      ADD CONSTRAINT chk_task_events_level
+      CHECK (level IN ('info', 'warning', 'error'));
+  END IF;
+END $$;
