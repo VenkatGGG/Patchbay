@@ -6,21 +6,23 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "db:migrate": "node scripts/migrate-db.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "2.8.0",
     "lucide-react": "1.17.0",
     "next": "16.2.7",
+    "pg": "^8.21.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/node": "25.9.2",
+    "@types/pg": "^8.20.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "typescript": "6.0.3"
   }
 }
-

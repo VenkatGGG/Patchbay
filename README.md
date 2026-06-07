@@ -49,3 +49,16 @@ Prerequisites:
 The local prototype can run without a real Tailscale tailnet while the
 integration boundary is developed.
 
+### Local Postgres
+
+```bash
+pnpm db:up
+pnpm db:migrate
+PATCHBAY_STORAGE=postgres pnpm dev
+```
+
+The default local database URL is:
+
+```text
+postgres://patchbay:patchbay@localhost:5432/patchbay
+```
