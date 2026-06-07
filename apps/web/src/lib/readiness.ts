@@ -34,8 +34,16 @@ type TailscaleStatus = {
   oauthClientConfigured: boolean;
 };
 
+type ApiValidationStatus = {
+  maxJsonBodyBytes: number;
+  defaultMaxJsonBodyBytes: number;
+  configuredMaxJsonBodyBytes?: number;
+  hardMaxJsonBodyBytes: number;
+};
+
 type ReadinessInput = {
   runtime: RuntimeStatus;
+  apiValidation: ApiValidationStatus;
   operatorAuth: {
     required: boolean;
   };
@@ -97,6 +105,21 @@ export function buildReadinessPosture(input: ReadinessInput): ReadinessPosture {
         : "Set PATCHBAY_REQUIRE_AGENT_TOKEN=true and PATCHBAY_AGENT_AUTH_SECRET."
     },
     {
+      id: "api_limits",
+      label: "API Body Limit",
+      status: "ready",
+      summary: `JSON API bodies are capped at ${formatBytes(
+        input.apiValidation.maxJsonBodyBytes
+      )}`,
+      detail: input.apiValidation.configuredMaxJsonBodyBytes
+        ? `PATCHBAY_MAX_JSON_BODY_BYTES is set to ${input.apiValidation.configuredMaxJsonBodyBytes} bytes and the effective maximum is capped at ${formatBytes(
+            input.apiValidation.hardMaxJsonBodyBytes
+          )}.`
+        : `PATCHBAY_MAX_JSON_BODY_BYTES is unset, so Patchbay uses the default ${formatBytes(
+            input.apiValidation.defaultMaxJsonBodyBytes
+          )} cap.`
+    },
+    {
       id: "llm_provider",
       label: "LLM Provider",
       status: selectedProvider?.configured ? "ready" : "warning",
@@ -142,4 +165,14 @@ function requiredSecretStatus(status: RequiredSecretStatus): ReadinessCheckStatu
   }
 
   return status.secretConfigured ? "ready" : "critical";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes % (1024 * 1024) === 0) {
+    return `${bytes / (1024 * 1024)} MiB`;
+  }
+  if (bytes % 1024 === 0) {
+    return `${bytes / 1024} KiB`;
+  }
+  return `${bytes} bytes`;
 }

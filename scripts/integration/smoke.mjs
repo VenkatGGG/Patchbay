@@ -69,6 +69,14 @@ async function main() {
     ready.agentAuth.tokenTtlMinutes === 30,
     `expected agent token ttl 30, got ${ready.agentAuth.tokenTtlMinutes}`
   );
+  assert(
+    ready.apiValidation.maxJsonBodyBytes === 262_144,
+    `expected JSON body cap 262144, got ${ready.apiValidation.maxJsonBodyBytes}`
+  );
+  assert(
+    ready.apiValidation.hardMaxJsonBodyBytes === 10 * 1024 * 1024,
+    `expected hard JSON body cap 10MiB, got ${ready.apiValidation.hardMaxJsonBodyBytes}`
+  );
   const geminiProvider = ready.llmProviders.find((provider) => provider.id === "gemini");
   assert(geminiProvider, "expected Gemini provider in readiness payload");
   assert(geminiProvider.selected === true, "expected Gemini provider to be selected");
@@ -87,6 +95,7 @@ async function main() {
   expectReadinessCheck(ready, "operator_auth", "ready");
   expectReadinessCheck(ready, "enrollment_auth", "ready");
   expectReadinessCheck(ready, "agent_auth", "ready");
+  expectReadinessCheck(ready, "api_limits", "ready");
   expectReadinessCheck(ready, "llm_provider", "warning");
   expectReadinessCheck(ready, "tailscale", "warning");
 

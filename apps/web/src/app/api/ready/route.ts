@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { agentAuthStatus } from "@/lib/agent-auth";
+import { apiValidationStatus } from "@/lib/api-validation";
 import { enrollmentAuthStatus } from "@/lib/enrollment-token";
 import { listLLMProviders } from "@/lib/llm";
 import { operatorAuthStatus } from "@/lib/operator-auth";
@@ -11,6 +12,7 @@ export async function GET() {
   try {
     const state = await store.snapshot();
     const agentAuth = agentAuthStatus();
+    const apiValidation = apiValidationStatus();
     const enrollmentAuth = enrollmentAuthStatus();
     const llmProviders = listLLMProviders();
     const operatorAuth = operatorAuthStatus();
@@ -18,6 +20,7 @@ export async function GET() {
     const tailscale = tailscaleRuntimeStatus();
     const posture = buildReadinessPosture({
       agentAuth,
+      apiValidation,
       enrollmentAuth,
       llmProviders,
       operatorAuth,
@@ -31,6 +34,7 @@ export async function GET() {
         service: "patchbay",
         timestamp: new Date().toISOString(),
         agentAuth,
+        apiValidation,
         enrollmentAuth,
         operatorAuth,
         runtime,

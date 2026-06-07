@@ -109,10 +109,15 @@ async function main() {
   assert(ready.operatorAuth.required === true, "expected operator auth required");
   assert(ready.enrollmentAuth.required === true, "expected enrollment auth required");
   assert(ready.agentAuth.required === true, "expected agent auth required");
+  assert(
+    ready.apiValidation.maxJsonBodyBytes === 1024 * 1024,
+    `expected default JSON body cap 1MiB, got ${ready.apiValidation.maxJsonBodyBytes}`
+  );
   assert(ready.posture.level === "degraded", "expected local production posture degraded");
   expectReadinessCheck(ready, "operator_auth", "ready");
   expectReadinessCheck(ready, "enrollment_auth", "ready");
   expectReadinessCheck(ready, "agent_auth", "ready");
+  expectReadinessCheck(ready, "api_limits", "ready");
   expectReadinessCheck(ready, "llm_provider", "warning");
   expectReadinessCheck(ready, "tailscale", "warning");
 

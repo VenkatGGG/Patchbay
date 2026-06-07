@@ -50,6 +50,12 @@ type RuntimeStatus = {
     storage: string;
     postgresConfigured: boolean;
   };
+  apiValidation: {
+    maxJsonBodyBytes: number;
+    defaultMaxJsonBodyBytes: number;
+    configuredMaxJsonBodyBytes?: number;
+    hardMaxJsonBodyBytes: number;
+  };
   tailscale: {
     configured: boolean;
     tailnetConfigured: boolean;
@@ -894,6 +900,13 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
       status: runtimeStatus?.agentAuth.required ? "ready" : "warning"
     },
     {
+      label: "API Body Limit",
+      value: runtimeStatus
+        ? formatBytes(runtimeStatus.apiValidation.maxJsonBodyBytes)
+        : "unknown",
+      status: "ready"
+    },
+    {
       label: "LLM",
       value: selectedProvider?.displayName ?? "unknown",
       status: selectedProvider?.configured ? "ready" : "warning"
@@ -1025,6 +1038,16 @@ function DiagnosticResult({ task }: { task: DiagnosticTask }) {
 function formatResult(result: unknown) {
   const rendered = JSON.stringify(redactValue(result), null, 2) ?? "";
   return rendered.length > 2200 ? `${rendered.slice(0, 2200)}\n...` : rendered;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes % (1024 * 1024) === 0) {
+    return `${bytes / (1024 * 1024)} MiB`;
+  }
+  if (bytes % 1024 === 0) {
+    return `${bytes / 1024} KiB`;
+  }
+  return `${bytes} bytes`;
 }
 
 function countTasks(state: ControlPlaneState, status: string) {

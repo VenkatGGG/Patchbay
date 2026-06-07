@@ -86,6 +86,19 @@ function maxJsonBodyBytes() {
   return Math.min(configured, MAX_CONFIGURABLE_JSON_BODY_BYTES);
 }
 
+export function apiValidationStatus() {
+  const configured = Number(process.env.PATCHBAY_MAX_JSON_BODY_BYTES);
+  const configuredMaxJsonBodyBytes =
+    Number.isInteger(configured) && configured > 0 ? configured : undefined;
+
+  return {
+    maxJsonBodyBytes: maxJsonBodyBytes(),
+    defaultMaxJsonBodyBytes: DEFAULT_MAX_JSON_BODY_BYTES,
+    configuredMaxJsonBodyBytes,
+    hardMaxJsonBodyBytes: MAX_CONFIGURABLE_JSON_BODY_BYTES
+  };
+}
+
 export function domainErrorResponse(error: unknown) {
   if (!(error instanceof Error)) {
     return undefined;
