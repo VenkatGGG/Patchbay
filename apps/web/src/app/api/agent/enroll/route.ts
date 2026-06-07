@@ -23,7 +23,7 @@ const enrollSchema = z.object({
 export async function POST(request: NextRequest) {
   const body = enrollSchema.parse(await request.json());
   const authKey = await createAgentAuthKey(body.environmentId);
-  const agent = store.enrollAgent({
+  const agent = await store.enrollAgent({
     ...body,
     tailscale: {
       ...body.tailscale,
@@ -47,4 +47,3 @@ export async function POST(request: NextRequest) {
     { status: 201 }
   );
 }
-

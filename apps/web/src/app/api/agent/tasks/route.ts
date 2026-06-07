@@ -7,7 +7,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
 
-  const tasks = store.claimTasks(agentId);
+  const tasks = await store.claimTasks(agentId);
   return NextResponse.json(tasks);
 }
-

@@ -8,12 +8,11 @@ const createEnvironmentSchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json(store.snapshot().environments);
+  return NextResponse.json((await store.snapshot()).environments);
 }
 
 export async function POST(request: NextRequest) {
   const body = createEnvironmentSchema.parse(await request.json());
-  const environment = store.createEnvironment(body.name, body.provider);
+  const environment = await store.createEnvironment(body.name, body.provider);
   return NextResponse.json(environment, { status: 201 });
 }
-

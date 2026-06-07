@@ -12,7 +12,6 @@ export async function POST(
 ) {
   await diagnosticSchema.parseAsync(await request.json().catch(() => ({})));
   const { sessionId } = await context.params;
-  const tasks = store.createLatencyDiagnostic(sessionId);
+  const tasks = await store.createLatencyDiagnostic(sessionId);
   return NextResponse.json(tasks, { status: 201 });
 }
-

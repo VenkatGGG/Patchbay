@@ -10,12 +10,11 @@ const createSessionSchema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json(store.snapshot().sessions);
+  return NextResponse.json((await store.snapshot()).sessions);
 }
 
 export async function POST(request: NextRequest) {
   const body = createSessionSchema.parse(await request.json());
-  const session = store.createSession(body);
+  const session = await store.createSession(body);
   return NextResponse.json(session, { status: 201 });
 }
-

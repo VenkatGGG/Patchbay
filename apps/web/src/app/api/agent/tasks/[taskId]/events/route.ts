@@ -18,7 +18,6 @@ export async function POST(
 ) {
   const { taskId } = await context.params;
   const body = eventSchema.parse(await request.json());
-  const event = store.addTaskEvent(taskId, body);
+  const event = await store.addTaskEvent(taskId, body);
   return NextResponse.json(event, { status: 201 });
 }
-
