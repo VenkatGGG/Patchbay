@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnvLine } from "../lib/env-file.mjs";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const targetPath = resolve(
@@ -46,7 +47,8 @@ const lines = content.split("\n");
 let replaced = false;
 
 const nextLines = lines.map((line) => {
-  if (line.startsWith("GEMINI_API_KEY=")) {
+  const parsed = parseEnvLine(line);
+  if (parsed?.key === "GEMINI_API_KEY") {
     replaced = true;
     return `GEMINI_API_KEY=${apiKey}`;
   }

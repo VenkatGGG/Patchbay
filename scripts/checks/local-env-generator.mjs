@@ -8,6 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { formatEnvValue, parseEnvContent } from "../lib/env-file.mjs";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const templatePath = fileURLToPath(new URL("../../.env.example", import.meta.url));
@@ -37,6 +38,8 @@ const dummyLiveValues = new Map([
 ]);
 
 try {
+  verifyEnvParser();
+
   const firstOutput = runGenerator();
   const firstValues = parseEnv(readFileSync(targetPath, "utf8"));
   const templateValues = parseEnv(readFileSync(templatePath, "utf8"));
@@ -114,7 +117,22 @@ function buildExistingEnvelope(values) {
   const lines = [];
 
   for (const [key, value] of values) {
-    lines.push(`${key}=${dummyLiveValues.get(key) ?? value}`);
+    if (key === "GEMINI_API_KEY") {
+      lines.push(`export ${key} = "${dummyLiveValues.get(key)}"`);
+      continue;
+    }
+
+    if (key === "TAILSCALE_TAILNET") {
+      lines.push(`${key}='${dummyLiveValues.get(key)}'`);
+      continue;
+    }
+
+    if (key === "TAILSCALE_OAUTH_CLIENT_ID") {
+      lines.push(`${key}=${dummyLiveValues.get(key)} # local test comment`);
+      continue;
+    }
+
+    lines.push(`${key}=${formatEnvValue(dummyLiveValues.get(key) ?? value)}`);
   }
 
   lines.push("PATCHBAY_EXTRA_LOCAL_FLAG=extra-local-value");
@@ -122,16 +140,41 @@ function buildExistingEnvelope(values) {
 }
 
 function parseEnv(content) {
-  const values = new Map();
+  return parseEnvContent(content);
+}
 
-  for (const line of content.split("\n")) {
-    const match = line.match(/^([A-Z0-9_]+)=(.*)$/u);
-    if (match) {
-      values.set(match[1], match[2]);
-    }
-  }
+function verifyEnvParser() {
+  const parsed = parseEnvContent(
+    [
+      "# comment",
+      "export GEMINI_API_KEY = \"test-gemini-key-value\"",
+      "TAILSCALE_TAILNET='test-tailnet'",
+      "TAILSCALE_OAUTH_CLIENT_ID=test-oauth-client-id # local comment",
+      ["PATCHBAY_OPERATOR_TOKEN", "existing-operator-token#literal"].join("="),
+      "PATCHBAY_EXTRA_LOCAL_FLAG=\"extra local value\""
+    ].join("\n")
+  );
 
-  return values;
+  assert(
+    parsed.get("GEMINI_API_KEY") === "test-gemini-key-value",
+    "parser should read exported double-quoted values"
+  );
+  assert(
+    parsed.get("TAILSCALE_TAILNET") === "test-tailnet",
+    "parser should read single-quoted values"
+  );
+  assert(
+    parsed.get("TAILSCALE_OAUTH_CLIENT_ID") === "test-oauth-client-id",
+    "parser should strip unquoted inline comments"
+  );
+  assert(
+    parsed.get("PATCHBAY_OPERATOR_TOKEN") === "existing-operator-token#literal",
+    "parser should keep literal hashes when they are not preceded by whitespace"
+  );
+  assert(
+    parsed.get("PATCHBAY_EXTRA_LOCAL_FLAG") === "extra local value",
+    "parser should preserve spaces inside quoted values"
+  );
 }
 
 function assert(condition, message) {

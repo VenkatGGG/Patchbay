@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { loadEnvFile } from "../lib/env-file.mjs";
 
 const localEnvPath = fileURLToPath(
   new URL("../../apps/web/.env.local", import.meta.url)
@@ -157,21 +157,6 @@ async function main() {
       2
     )
   );
-}
-
-function loadEnvFile(path) {
-  if (!existsSync(path)) {
-    return new Map();
-  }
-
-  const values = new Map();
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    const match = line.match(/^([A-Z0-9_]+)=(.*)$/u);
-    if (match) {
-      values.set(match[1], match[2]);
-    }
-  }
-  return values;
 }
 
 function envValue(key) {

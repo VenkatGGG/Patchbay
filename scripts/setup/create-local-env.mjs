@@ -7,6 +7,11 @@ import {
 } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  formatEnvValue,
+  parseEnvContent,
+  parseEnvLine
+} from "../lib/env-file.mjs";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const templatePath = fileURLToPath(new URL("../../.env.example", import.meta.url));
@@ -33,14 +38,14 @@ const preserveBlankKeys = new Set([
 
 const template = readFileSync(templatePath, "utf8");
 const existing = targetExisted ? readFileSync(targetPath, "utf8") : "";
-const existingValues = parseEnv(existing);
+const existingValues = parseEnvContent(existing);
 const templateKeys = new Set();
 const generated = [];
 const preserved = [];
 const output = [];
 
 for (const line of template.split("\n")) {
-  const parsed = parseLine(line);
+  const parsed = parseEnvLine(line);
 
   if (!parsed) {
     output.push(line);
@@ -55,7 +60,7 @@ for (const line of template.split("\n")) {
     existingValue.trim() !== "" &&
     !isWeakGeneratedSecret(parsed.key, existingValue)
   ) {
-    output.push(`${parsed.key}=${existingValue}`);
+    output.push(`${parsed.key}=${formatEnvValue(existingValue)}`);
     preserved.push(parsed.key);
     continue;
   }
@@ -79,7 +84,7 @@ if (extraLocalKeys.length > 0) {
   output.push("");
   output.push("# Existing local-only keys preserved by pnpm env:local");
   for (const key of extraLocalKeys) {
-    output.push(`${key}=${existingValues.get(key)}`);
+    output.push(`${key}=${formatEnvValue(existingValues.get(key))}`);
   }
 }
 
@@ -94,31 +99,6 @@ if (preserved.length > 0) {
   console.log(`Preserved existing values for: ${preserved.join(", ")}`);
 }
 console.log(`Set GEMINI_API_KEY in ${targetDisplayPath} when the key is available.`);
-
-function parseEnv(content) {
-  const values = new Map();
-
-  for (const line of content.split("\n")) {
-    const parsed = parseLine(line);
-    if (parsed) {
-      values.set(parsed.key, parsed.value);
-    }
-  }
-
-  return values;
-}
-
-function parseLine(line) {
-  const match = line.match(/^([A-Z0-9_]+)=(.*)$/u);
-  if (!match) {
-    return undefined;
-  }
-
-  return {
-    key: match[1],
-    value: match[2]
-  };
-}
 
 function randomSecret(key) {
   const prefix = key.toLowerCase().replaceAll("_", "-");
