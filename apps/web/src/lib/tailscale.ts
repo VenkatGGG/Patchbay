@@ -13,9 +13,7 @@ type TailscaleOAuthToken = {
 };
 
 export async function createAgentAuthKey(environmentId: string): Promise<TailscaleAuthKey> {
-  const tailnet = process.env.TAILSCALE_TAILNET;
-  const clientId = process.env.TAILSCALE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.TAILSCALE_OAUTH_CLIENT_SECRET;
+  const { tailnet, clientId, clientSecret } = tailscaleConfig();
   const tags = ["tag:patchbay-agent", `tag:patchbay-${environmentId}`];
 
   if (!tailnet || !clientId || !clientSecret) {
@@ -82,3 +80,20 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
   };
 }
 
+export function tailscaleRuntimeStatus() {
+  const { tailnet, clientId, clientSecret } = tailscaleConfig();
+
+  return {
+    configured: Boolean(tailnet && clientId && clientSecret),
+    tailnetConfigured: Boolean(tailnet),
+    oauthClientConfigured: Boolean(clientId && clientSecret)
+  };
+}
+
+function tailscaleConfig() {
+  return {
+    tailnet: process.env.TAILSCALE_TAILNET?.trim(),
+    clientId: process.env.TAILSCALE_OAUTH_CLIENT_ID?.trim(),
+    clientSecret: process.env.TAILSCALE_OAUTH_CLIENT_SECRET?.trim()
+  };
+}

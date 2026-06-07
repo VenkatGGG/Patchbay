@@ -53,6 +53,14 @@ async function main() {
     "expected readiness endpoint to report operator auth enabled"
   );
   assert(
+    ready.enrollmentAuth.required === true,
+    "expected readiness endpoint to report enrollment auth enabled"
+  );
+  assert(
+    ready.enrollmentAuth.secretConfigured === true,
+    "expected readiness endpoint to report enrollment signing secret configured"
+  );
+  assert(
     ready.agentAuth.required === true,
     "expected readiness endpoint to report agent auth enabled"
   );
@@ -67,6 +75,19 @@ async function main() {
     geminiProvider.configured === false,
     "expected Gemini provider to be unconfigured without GEMINI_API_KEY"
   );
+  assert(
+    ready.tailscale.configured === false,
+    "expected Tailscale automation to be unconfigured in local integration"
+  );
+  assert(
+    ready.posture.level === "degraded",
+    `expected readiness posture degraded, got ${ready.posture.level}`
+  );
+  expectReadinessCheck(ready, "operator_auth", "ready");
+  expectReadinessCheck(ready, "enrollment_auth", "ready");
+  expectReadinessCheck(ready, "agent_auth", "ready");
+  expectReadinessCheck(ready, "llm_provider", "warning");
+  expectReadinessCheck(ready, "tailscale", "warning");
 
   await expectStatus(
     "unauthenticated state is rejected",
@@ -489,6 +510,15 @@ function operatorHeaders() {
   return {
     Authorization: `Bearer ${operatorToken}`
   };
+}
+
+function expectReadinessCheck(ready, id, status) {
+  const check = ready.posture.checks.find((candidate) => candidate.id === id);
+  assert(check, `expected readiness check ${id}`);
+  assert(
+    check.status === status,
+    `expected readiness check ${id} to be ${status}, got ${check.status}`
+  );
 }
 
 function enrollmentHeaders(token) {

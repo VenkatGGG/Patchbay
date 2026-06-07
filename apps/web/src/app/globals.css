@@ -466,7 +466,8 @@ button {
 }
 
 .pill.expired,
-.pill.failed {
+.pill.failed,
+.pill.critical {
   color: var(--red);
   background: var(--red-soft);
 }
@@ -531,6 +532,42 @@ button {
   color: var(--text);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.readiness-list {
+  display: grid;
+  gap: 10px;
+}
+
+.readiness-item {
+  display: grid;
+  gap: 6px;
+  border-left: 3px solid var(--border);
+  padding: 10px 12px;
+  background: #fbfcf9;
+}
+
+.readiness-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.readiness-heading strong {
+  font-size: 13px;
+}
+
+.readiness-item p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.readiness-item span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .result-list {

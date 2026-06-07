@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { redactValue } from "@/lib/redaction";
+import type { ReadinessCheck, ReadinessPosture } from "@/lib/readiness";
 import { ControlPlaneState, DebugSession, DiagnosticTask } from "@/lib/types";
 
 const emptyState: ControlPlaneState = {
@@ -35,6 +36,10 @@ type RuntimeStatus = {
     secretConfigured: boolean;
     tokenTtlMinutes: number;
   };
+  enrollmentAuth: {
+    required: boolean;
+    secretConfigured: boolean;
+  };
   operatorAuth: {
     required: boolean;
   };
@@ -42,6 +47,12 @@ type RuntimeStatus = {
     storage: string;
     postgresConfigured: boolean;
   };
+  tailscale: {
+    configured: boolean;
+    tailnetConfigured: boolean;
+    oauthClientConfigured: boolean;
+  };
+  posture: ReadinessPosture;
   counts: {
     environments: number;
     agents: number;
@@ -422,6 +433,14 @@ export function ControlPlaneDashboard() {
             </Panel>
 
             <Panel
+              icon={<ShieldCheck size={17} />}
+              title="Readiness Checks"
+              subtitle={runtimeStatus?.posture.level ?? "pending"}
+            >
+              <ReadinessChecks checks={runtimeStatus?.posture.checks ?? []} />
+            </Panel>
+
+            <Panel
               icon={<Activity size={17} />}
               title="Session Control"
               subtitle="Session-scoped read-only authority"
@@ -684,6 +703,11 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
       status: runtimeStatus?.agentAuth.required ? "ready" : "warning"
     },
     {
+      label: "Enrollment",
+      value: runtimeStatus?.enrollmentAuth.required ? "required" : "local open",
+      status: runtimeStatus?.enrollmentAuth.required ? "ready" : "warning"
+    },
+    {
       label: "Agent Secret",
       value: runtimeStatus?.agentAuth.secretConfigured ? "configured" : "fallback",
       status: runtimeStatus?.agentAuth.secretConfigured ? "ready" : "warning"
@@ -701,6 +725,11 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
       status: selectedProvider?.configured ? "ready" : "warning"
     },
     {
+      label: "Tailscale",
+      value: runtimeStatus?.tailscale.configured ? "configured" : "manual",
+      status: runtimeStatus?.tailscale.configured ? "ready" : "warning"
+    },
+    {
       label: "Last Check",
       value: runtimeStatus
         ? new Date(runtimeStatus.timestamp).toLocaleTimeString()
@@ -716,6 +745,27 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
           <span>{item.label}</span>
           <strong>{item.value}</strong>
           <StatusPill value={item.status} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReadinessChecks({ checks }: { checks: ReadinessCheck[] }) {
+  if (checks.length === 0) {
+    return <div className="empty">Readiness checks are loading.</div>;
+  }
+
+  return (
+    <div className="readiness-list">
+      {checks.map((check) => (
+        <div className="readiness-item" key={check.id}>
+          <div className="readiness-heading">
+            <strong>{check.label}</strong>
+            <StatusPill value={check.status} />
+          </div>
+          <p>{check.summary}</p>
+          <span>{check.detail}</span>
         </div>
       ))}
     </div>

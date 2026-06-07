@@ -137,6 +137,13 @@ pnpm db:up
 pnpm test:integration:postgres
 ```
 
+### Readiness Posture
+
+`/api/ready` returns service liveness plus structured readiness checks for
+persistence, operator auth, enrollment auth, agent API auth, Gemini, and
+Tailscale automation. The dashboard renders the same checks in the Runtime
+Posture area so local/demo gaps are visible before production-like use.
+
 ### Agent Enrollment Tokens
 
 For local development, enrollment tokens are optional by default. To require

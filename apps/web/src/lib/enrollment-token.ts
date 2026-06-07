@@ -70,6 +70,13 @@ export function isEnrollmentTokenRequired() {
   return process.env.PATCHBAY_REQUIRE_ENROLLMENT_TOKEN === "true";
 }
 
+export function enrollmentAuthStatus() {
+  return {
+    required: isEnrollmentTokenRequired(),
+    secretConfigured: Boolean(process.env.PATCHBAY_ENROLLMENT_SECRET)
+  };
+}
+
 export function enrollmentTokenFromAuthorization(header: string | null) {
   const match = header?.match(/^Bearer\s+(.+)$/i);
   return match?.[1];
@@ -96,4 +103,3 @@ function base64UrlEncode(input: string) {
 function base64UrlDecode(input: string) {
   return Buffer.from(input, "base64url").toString("utf8");
 }
-

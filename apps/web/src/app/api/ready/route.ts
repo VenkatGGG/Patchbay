@@ -1,21 +1,41 @@
 import { NextResponse } from "next/server";
 import { agentAuthStatus } from "@/lib/agent-auth";
+import { enrollmentAuthStatus } from "@/lib/enrollment-token";
 import { listLLMProviders } from "@/lib/llm";
 import { operatorAuthStatus } from "@/lib/operator-auth";
+import { buildReadinessPosture } from "@/lib/readiness";
 import { getStoreRuntime, store } from "@/lib/store";
+import { tailscaleRuntimeStatus } from "@/lib/tailscale";
 
 export async function GET() {
   try {
     const state = await store.snapshot();
+    const agentAuth = agentAuthStatus();
+    const enrollmentAuth = enrollmentAuthStatus();
+    const llmProviders = listLLMProviders();
+    const operatorAuth = operatorAuthStatus();
+    const runtime = getStoreRuntime();
+    const tailscale = tailscaleRuntimeStatus();
+    const posture = buildReadinessPosture({
+      agentAuth,
+      enrollmentAuth,
+      llmProviders,
+      operatorAuth,
+      runtime,
+      tailscale
+    });
 
     return NextResponse.json(
       {
         status: "ready",
         service: "patchbay",
         timestamp: new Date().toISOString(),
-        agentAuth: agentAuthStatus(),
-        operatorAuth: operatorAuthStatus(),
-        runtime: getStoreRuntime(),
+        agentAuth,
+        enrollmentAuth,
+        operatorAuth,
+        runtime,
+        tailscale,
+        posture,
         counts: {
           environments: state.environments.length,
           agents: state.agents.length,
@@ -23,7 +43,7 @@ export async function GET() {
           tasks: state.tasks.length,
           auditEvents: state.audit.length
         },
-        llmProviders: listLLMProviders()
+        llmProviders
       },
       {
         headers: {
