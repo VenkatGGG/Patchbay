@@ -1,4 +1,5 @@
 import { ControlPlaneState } from "../types";
+import { isSensitiveKey, redactString } from "../redaction";
 import { EvidencePayload } from "./types";
 
 export function buildEvidencePayload(
@@ -54,7 +55,7 @@ function compact(value: unknown, depth = 0): unknown {
   }
 
   if (typeof value === "string") {
-    return redact(value).slice(0, 2_000);
+    return redactString(value).slice(0, 2_000);
   }
 
   if (typeof value !== "object") {
@@ -72,19 +73,9 @@ function compact(value: unknown, depth = 0): unknown {
   return Object.fromEntries(
     Object.entries(value)
       .slice(0, 80)
-      .map(([key, item]) => [key, compact(item, depth + 1)])
+      .map(([key, item]) => [
+        key,
+        isSensitiveKey(key) ? "[REDACTED_SECRET]" : compact(item, depth + 1)
+      ])
   );
-}
-
-function redact(value: string) {
-  return value
-    .replace(
-      /(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN|DATABASE_URL)=\S+/gi,
-      "[REDACTED_SECRET]"
-    )
-    .replace(/bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED_TOKEN]")
-    .replace(
-      /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-      "[REDACTED_PRIVATE_KEY]"
-    );
 }

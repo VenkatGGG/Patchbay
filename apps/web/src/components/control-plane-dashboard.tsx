@@ -14,6 +14,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { redactValue } from "@/lib/redaction";
 import { ControlPlaneState, DebugSession, DiagnosticTask } from "@/lib/types";
 
 const emptyState: ControlPlaneState = {
@@ -783,7 +784,7 @@ function DiagnosticResult({ task }: { task: DiagnosticTask }) {
 }
 
 function formatResult(result: unknown) {
-  const rendered = JSON.stringify(result, null, 2) ?? "";
+  const rendered = JSON.stringify(redactValue(result), null, 2) ?? "";
   return rendered.length > 2200 ? `${rendered.slice(0, 2200)}\n...` : rendered;
 }
 

@@ -1,4 +1,5 @@
 import { ControlPlaneState, DebugSession, DiagnosticTask } from "./types";
+import { redactValue } from "./redaction";
 
 export function buildSessionReport(
   session: DebugSession,
@@ -104,6 +105,6 @@ function markdownCell(value: string) {
 }
 
 function renderResult(result: unknown) {
-  const rendered = JSON.stringify(result, null, 2) ?? "null";
+  const rendered = JSON.stringify(redactValue(result), null, 2) ?? "null";
   return rendered.length > 6000 ? `${rendered.slice(0, 6000)}\n...` : rendered;
 }

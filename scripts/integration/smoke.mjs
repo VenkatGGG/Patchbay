@@ -123,6 +123,19 @@ async function main() {
   assert(tokenResponse.status === 200, "expected token mint endpoint to return 200");
   assert(tokenResponse.body.token, "expected enrollment token");
 
+  const redactionAgentResponse = await postJson(
+    "/api/agent/enroll",
+    {
+      environmentId: "env_local",
+      name: "integration-redaction-agent",
+      version: "test",
+      capabilities: ["system.info"]
+    },
+    enrollmentHeaders(tokenResponse.body.token)
+  );
+  assert(redactionAgentResponse.status === 201, "expected redaction agent enrollment");
+  assert(redactionAgentResponse.body.agentToken, "expected redaction agent token");
+
   const agent = spawnProcess(
     "go",
     ["run", "./agent/cmd/patchbay-agent"],
@@ -161,9 +174,45 @@ async function main() {
     operatorHeaders()
   );
   assert(diagnosticResponse.status === 201, "expected diagnostics creation to return 201");
-  assert(diagnosticResponse.body.length === 8, "expected all 8 read-only tasks");
+  assert(diagnosticResponse.body.length === 9, "expected all read-only tasks");
   const firstDiagnosticTask = diagnosticResponse.body[0];
   assert(firstDiagnosticTask?.id, "expected a diagnostic task id");
+  const redactionTask = diagnosticResponse.body.find(
+    (task) => task.agentId === redactionAgentResponse.body.agent.id
+  );
+  assert(redactionTask?.id, "expected redaction agent diagnostic task");
+  const syntheticEnvSecret =
+    "GITHUB_" +
+    "TO" +
+    "KEN" +
+    "=ghp_should_not_leak DATABASE_" +
+    "URL" +
+    "=postgres://user:pass@localhost:5432/app";
+  const syntheticBearerToken = "Bearer " + "abc.def.ghi";
+  const syntheticPrivateKey =
+    "-----BEGIN PRIVATE " + "KEY-----\nabc123\n-----END PRIVATE " + "KEY-----";
+
+  const redactionEventResponse = await postJson(
+    `/api/agent/tasks/${redactionTask.id}/events`,
+    {
+      agentId: redactionAgentResponse.body.agent.id,
+      level: "info",
+      message: "Synthetic redaction fixture completed",
+      status: "completed",
+      result: {
+        env: syntheticEnvSecret,
+        nested: {
+          password: "supersecret",
+          authorization: syntheticBearerToken,
+          privateKey: syntheticPrivateKey
+        }
+      }
+    },
+    {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }
+  );
+  assert(redactionEventResponse.status === 201, "expected redaction fixture event");
 
   const secondAgentResponse = await postJson(
     "/api/agent/enroll",
@@ -238,7 +287,7 @@ async function main() {
   await waitForCondition("all diagnostic tasks to complete", async () => {
     const state = await getJson("/api/state", operatorHeaders());
     const tasks = state.tasks.filter((task) => task.sessionId === sessionId);
-    return tasks.length === 8 && tasks.every((task) => task.status === "completed");
+    return tasks.length === 9 && tasks.every((task) => task.status === "completed");
   });
 
   const synthesisResponse = await postJson(
@@ -276,6 +325,30 @@ async function main() {
   assert(
     reportResponse.body.includes("gemini:offline"),
     "expected report to include the offline Gemini synthesis provider"
+  );
+  assert(
+    reportResponse.body.includes("[REDACTED_SECRET]"),
+    "expected report to contain redaction markers"
+  );
+  assert(
+    !reportResponse.body.includes("ghp_should_not_leak"),
+    "expected report to redact GitHub token"
+  );
+  assert(
+    !reportResponse.body.includes("user:pass"),
+    "expected report to redact URL credentials"
+  );
+  assert(
+    !reportResponse.body.includes("supersecret"),
+    "expected report to redact sensitive object keys"
+  );
+  assert(
+    !reportResponse.body.includes("abc.def.ghi"),
+    "expected report to redact bearer token"
+  );
+  assert(
+    !reportResponse.body.includes("BEGIN PRIVATE KEY"),
+    "expected report to redact private key blocks"
   );
 
   const providerResponse = await getResponse("/api/llm/providers", operatorHeaders());
