@@ -32,7 +32,7 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
     };
   }
 
-  const tokenResponse = await fetch(
+  const tokenResponse = await tailscaleFetch(
     tailscaleApiUrl(apiBaseUrl, "/api/v2/oauth/token"),
     {
       method: "POST",
@@ -43,7 +43,8 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
         client_id: clientId,
         client_secret: clientSecret
       })
-    }
+    },
+    "token"
   );
 
   if (!tokenResponse.ok) {
@@ -60,7 +61,7 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
   }
 
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
-  const keyResponse = await fetch(
+  const keyResponse = await tailscaleFetch(
     tailscaleApiUrl(apiBaseUrl, `/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys`),
     {
       method: "POST",
@@ -82,7 +83,8 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
         expirySeconds: 1800,
         description: `Patchbay agent enrollment for ${environmentId}`
       })
-    }
+    },
+    "auth key"
   );
 
   if (!keyResponse.ok) {
@@ -143,6 +145,20 @@ function tailscaleConfig() {
 
 function tailscaleApiUrl(apiBaseUrl: string, path: string) {
   return `${apiBaseUrl}${path}`;
+}
+
+async function tailscaleFetch(
+  url: string,
+  init: RequestInit,
+  label: string
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new TailscaleIntegrationError(
+      `Tailscale ${label} request failed before response`
+    );
+  }
 }
 
 async function tailscaleJson<T>(response: Response, label: string): Promise<T> {

@@ -138,93 +138,78 @@ async function main() {
     "expected auth key environment tag"
   );
 
-  fakeMode = "missing-token";
-  const missingTokenAgentResponse = await enrollAgent(
-    "fake-tailscale-missing-token-agent",
-    enrollmentTokenResponse.body.token
-  );
-  assert(
-    missingTokenAgentResponse.status === 502,
-    `expected missing OAuth token response 502, got ${missingTokenAgentResponse.status}`
-  );
-  assert(
-    missingTokenAgentResponse.body.error === "Tailscale enrollment failed",
-    "expected sanitized Tailscale failure error"
-  );
-  assert(
-    missingTokenAgentResponse.body.detail ===
-      "Tailscale token response did not include access_token",
-    "expected missing access token detail"
-  );
+  const failureCases = [
+    {
+      mode: "token-status-error",
+      agentName: "fake-tailscale-token-status-agent",
+      detail: "Tailscale token request failed: 503"
+    },
+    {
+      mode: "token-network-failure",
+      agentName: "fake-tailscale-token-network-agent",
+      detail: "Tailscale token request failed before response"
+    },
+    {
+      mode: "missing-token",
+      agentName: "fake-tailscale-missing-token-agent",
+      detail: "Tailscale token response did not include access_token"
+    },
+    {
+      mode: "invalid-token-json",
+      agentName: "fake-tailscale-invalid-token-json-agent",
+      detail: "Tailscale token response was not valid JSON"
+    },
+    {
+      mode: "key-status-error",
+      agentName: "fake-tailscale-key-status-agent",
+      detail: "Tailscale auth key request failed: 503"
+    },
+    {
+      mode: "key-network-failure",
+      agentName: "fake-tailscale-key-network-agent",
+      detail: "Tailscale auth key request failed before response"
+    },
+    {
+      mode: "missing-key",
+      agentName: "fake-tailscale-missing-key-agent",
+      detail: "Tailscale auth key response did not include key"
+    },
+    {
+      mode: "invalid-key-json",
+      agentName: "fake-tailscale-invalid-key-json-agent",
+      detail: "Tailscale auth key response was not valid JSON"
+    }
+  ];
 
-  fakeMode = "invalid-token-json";
-  const invalidTokenJsonAgentResponse = await enrollAgent(
-    "fake-tailscale-invalid-token-json-agent",
-    enrollmentTokenResponse.body.token
-  );
-  assert(
-    invalidTokenJsonAgentResponse.status === 502,
-    `expected invalid OAuth JSON response 502, got ${invalidTokenJsonAgentResponse.status}`
-  );
-  assert(
-    invalidTokenJsonAgentResponse.body.detail ===
-      "Tailscale token response was not valid JSON",
-    "expected invalid OAuth JSON detail"
-  );
-
-  fakeMode = "missing-key";
-  const missingKeyAgentResponse = await enrollAgent(
-    "fake-tailscale-missing-key-agent",
-    enrollmentTokenResponse.body.token
-  );
-  assert(
-    missingKeyAgentResponse.status === 502,
-    `expected missing auth key response 502, got ${missingKeyAgentResponse.status}`
-  );
-  assert(
-    missingKeyAgentResponse.body.error === "Tailscale enrollment failed",
-    "expected sanitized auth key failure error"
-  );
-  assert(
-    missingKeyAgentResponse.body.detail ===
-      "Tailscale auth key response did not include key",
-    "expected missing auth key detail"
-  );
-
-  fakeMode = "invalid-key-json";
-  const invalidKeyJsonAgentResponse = await enrollAgent(
-    "fake-tailscale-invalid-key-json-agent",
-    enrollmentTokenResponse.body.token
-  );
-  assert(
-    invalidKeyJsonAgentResponse.status === 502,
-    `expected invalid key JSON response 502, got ${invalidKeyJsonAgentResponse.status}`
-  );
-  assert(
-    invalidKeyJsonAgentResponse.body.detail ===
-      "Tailscale auth key response was not valid JSON",
-    "expected invalid auth key JSON detail"
-  );
+  for (const failureCase of failureCases) {
+    fakeMode = failureCase.mode;
+    const failureResponse = await enrollAgent(
+      failureCase.agentName,
+      enrollmentTokenResponse.body.token
+    );
+    assert(
+      failureResponse.status === 502,
+      `expected ${failureCase.mode} response 502, got ${failureResponse.status}`
+    );
+    assert(
+      failureResponse.body.error === "Tailscale enrollment failed",
+      `expected sanitized Tailscale failure error for ${failureCase.mode}`
+    );
+    assert(
+      failureResponse.body.detail === failureCase.detail,
+      `expected ${failureCase.mode} detail ${JSON.stringify(failureCase.detail)}, got ${JSON.stringify(failureResponse.body.detail)}`
+    );
+  }
 
   const failureStateResponse = await getResponse("/api/state", operatorHeaders());
   assert(failureStateResponse.status === 200, "expected state after Tailscale failures");
   const failedAgentNames = new Set(failureStateResponse.body.agents.map((agent) => agent.name));
-  assert(
-    !failedAgentNames.has("fake-tailscale-missing-token-agent"),
-    "expected missing-token Tailscale failure not to persist an agent"
-  );
-  assert(
-    !failedAgentNames.has("fake-tailscale-missing-key-agent"),
-    "expected missing-key Tailscale failure not to persist an agent"
-  );
-  assert(
-    !failedAgentNames.has("fake-tailscale-invalid-token-json-agent"),
-    "expected invalid-token-json Tailscale failure not to persist an agent"
-  );
-  assert(
-    !failedAgentNames.has("fake-tailscale-invalid-key-json-agent"),
-    "expected invalid-key-json Tailscale failure not to persist an agent"
-  );
+  for (const failureCase of failureCases) {
+    assert(
+      !failedAgentNames.has(failureCase.agentName),
+      `expected ${failureCase.mode} Tailscale failure not to persist an agent`
+    );
+  }
 
   console.log(
     JSON.stringify(
@@ -264,6 +249,18 @@ function createFakeTailscaleApi() {
     });
 
     if (request.method === "POST" && request.url === "/api/v2/oauth/token") {
+      if (fakeMode === "token-network-failure") {
+        request.socket.destroy();
+        return;
+      }
+
+      if (fakeMode === "token-status-error") {
+        jsonResponse(response, 503, {
+          error: "temporary fake OAuth outage"
+        });
+        return;
+      }
+
       if (fakeMode === "invalid-token-json") {
         textResponse(response, 200, "not-json");
         return;
@@ -289,6 +286,18 @@ function createFakeTailscaleApi() {
       request.method === "POST" &&
       request.url === `/api/v2/tailnet/${tailnet}/keys`
     ) {
+      if (fakeMode === "key-network-failure") {
+        request.socket.destroy();
+        return;
+      }
+
+      if (fakeMode === "key-status-error") {
+        jsonResponse(response, 503, {
+          error: "temporary fake key outage"
+        });
+        return;
+      }
+
       if (fakeMode === "invalid-key-json") {
         textResponse(response, 200, "not-json");
         return;
