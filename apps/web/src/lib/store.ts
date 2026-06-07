@@ -42,6 +42,13 @@ type AddTaskEventInput = {
   error?: string;
 };
 
+export class TaskAssignmentError extends Error {
+  constructor(taskId: string, agentId: string) {
+    super(`Agent ${agentId} is not assigned to task ${taskId}`);
+    this.name = "TaskAssignmentError";
+  }
+}
+
 export type PatchbayStore = {
   snapshot(): Promise<ControlPlaneState>;
   createEnvironment(
@@ -239,6 +246,7 @@ class MemoryStore implements PatchbayStore {
     if (!task) {
       throw new Error(`Unknown task: ${taskId}`);
     }
+    ensureTaskAssignedToAgent(task, input.agentId);
 
     const event: TaskEvent = {
       id: makeId("evt"),
@@ -531,6 +539,7 @@ class PostgresStore implements PatchbayStore {
     if (!task) {
       throw new Error(`Unknown task: ${taskId}`);
     }
+    ensureTaskAssignedToAgent(task, input.agentId);
 
     const event: TaskEvent = {
       id: makeId("evt"),
@@ -722,6 +731,12 @@ const nextTaskState = (
     result: input.result ?? task.result,
     error: input.error ?? task.error
   };
+};
+
+const ensureTaskAssignedToAgent = (task: DiagnosticTask, agentId: string) => {
+  if (task.agentId !== agentId) {
+    throw new TaskAssignmentError(task.id, agentId);
+  }
 };
 
 const paramsFor = (capability: Capability): Record<string, unknown> => {

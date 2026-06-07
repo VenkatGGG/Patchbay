@@ -143,6 +143,38 @@ async function main() {
   );
   assert(diagnosticResponse.status === 201, "expected diagnostics creation to return 201");
   assert(diagnosticResponse.body.length === 8, "expected all 8 read-only tasks");
+  const firstDiagnosticTask = diagnosticResponse.body[0];
+  assert(firstDiagnosticTask?.id, "expected a diagnostic task id");
+
+  const secondAgentResponse = await postJson(
+    "/api/agent/enroll",
+    {
+      environmentId: "env_local",
+      name: "integration-agent-secondary",
+      version: "test",
+      capabilities: ["system.info"]
+    },
+    enrollmentHeaders(tokenResponse.body.token)
+  );
+  assert(secondAgentResponse.status === 201, "expected secondary agent enrollment");
+  assert(secondAgentResponse.body.agentToken, "expected secondary agent token");
+
+  await expectStatus(
+    "agent cannot update another agent task",
+    postJson(
+      `/api/agent/tasks/${firstDiagnosticTask.id}/events`,
+      {
+        agentId: secondAgentResponse.body.agent.id,
+        level: "info",
+        message: "Cross-agent event should be rejected",
+        status: "running"
+      },
+      {
+        Authorization: `Bearer ${secondAgentResponse.body.agentToken}`
+      }
+    ),
+    403
+  );
 
   await waitForCondition("all diagnostic tasks to complete", async () => {
     const state = await getJson("/api/state", operatorHeaders());
@@ -324,6 +356,12 @@ async function getTextResponse(path, headers = {}) {
 function operatorHeaders() {
   return {
     Authorization: `Bearer ${operatorToken}`
+  };
+}
+
+function enrollmentHeaders(token) {
+  return {
+    Authorization: `Bearer ${token}`
   };
 }
 

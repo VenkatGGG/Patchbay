@@ -39,6 +39,8 @@ Control plane:
 - Optional operator bearer token for dashboard and human-operated APIs.
 - Optional signed agent bearer token requirement for task polling and event
   uploads.
+- Task event ingestion verifies the signed agent identity is assigned to the
+  task being updated.
 - Session expiration.
 - Capability allowlists.
 - Task audit log.
