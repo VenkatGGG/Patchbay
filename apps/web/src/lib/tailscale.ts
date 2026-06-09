@@ -1,3 +1,5 @@
+import { redactString } from "./redaction";
+
 export type TailscaleAuthKey = {
   available: boolean;
   id?: string;
@@ -21,8 +23,12 @@ export class TailscaleIntegrationError extends Error {
 }
 
 export async function createAgentAuthKey(environmentId: string): Promise<TailscaleAuthKey> {
-  const { apiBaseUrl, tailnet, clientId, clientSecret } = tailscaleConfig();
-  const tags = ["tag:patchbay-agent", tailscaleEnvironmentTag(environmentId)];
+  const { apiBaseUrl, tailnet, clientId, clientSecret, rawAuthKeyTags } =
+    tailscaleConfig();
+  const tags = parseAuthKeyTags(rawAuthKeyTags) ?? [
+    "tag:patchbay-agent",
+    tailscaleEnvironmentTag(environmentId)
+  ];
 
   if (!tailnet || !clientId || !clientSecret) {
     return {
@@ -49,7 +55,7 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
 
   if (!tokenResponse.ok) {
     throw new TailscaleIntegrationError(
-      `Tailscale token request failed: ${tokenResponse.status}`
+      await tailscaleRequestFailure("token", tokenResponse)
     );
   }
 
@@ -89,7 +95,7 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
 
   if (!keyResponse.ok) {
     throw new TailscaleIntegrationError(
-      `Tailscale auth key request failed: ${keyResponse.status}`
+      await tailscaleRequestFailure("auth key", keyResponse)
     );
   }
 
@@ -139,8 +145,30 @@ function tailscaleConfig() {
     ).replace(/\/+$/u, ""),
     tailnet: process.env.TAILSCALE_TAILNET?.trim(),
     clientId: process.env.TAILSCALE_OAUTH_CLIENT_ID?.trim(),
-    clientSecret: process.env.TAILSCALE_OAUTH_CLIENT_SECRET?.trim()
+    clientSecret: process.env.TAILSCALE_OAUTH_CLIENT_SECRET?.trim(),
+    rawAuthKeyTags: process.env.TAILSCALE_AUTH_KEY_TAGS
   };
+}
+
+function parseAuthKeyTags(rawTags?: string) {
+  const tags = rawTags
+    ?.split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  if (!tags || tags.length === 0) {
+    return undefined;
+  }
+
+  for (const tag of tags) {
+    if (!/^tag:[a-z0-9][a-z0-9-]*$/u.test(tag)) {
+      throw new TailscaleIntegrationError(
+        `TAILSCALE_AUTH_KEY_TAGS contains invalid tag ${tag}`
+      );
+    }
+  }
+
+  return [...new Set(tags)];
 }
 
 function tailscaleApiUrl(apiBaseUrl: string, path: string) {
@@ -169,4 +197,37 @@ async function tailscaleJson<T>(response: Response, label: string): Promise<T> {
       `Tailscale ${label} response was not valid JSON`
     );
   }
+}
+
+async function tailscaleRequestFailure(label: string, response: Response) {
+  const detail = await tailscaleErrorDetail(response);
+  return `Tailscale ${label} request failed: ${response.status}${detail ? ` (${detail})` : ""}`;
+}
+
+async function tailscaleErrorDetail(response: Response) {
+  let raw = "";
+  try {
+    raw = await response.text();
+  } catch {
+    return "";
+  }
+
+  if (!raw.trim()) {
+    return "";
+  }
+
+  let detail = raw;
+  try {
+    const parsed = JSON.parse(raw) as {
+      message?: unknown;
+      error?: unknown;
+      detail?: unknown;
+    };
+    detail = String(parsed.message ?? parsed.error ?? parsed.detail ?? raw);
+  } catch {
+    detail = raw;
+  }
+
+  detail = redactString(detail).replace(/\s+/gu, " ").trim();
+  return detail.length > 180 ? `${detail.slice(0, 180)}...` : detail;
 }

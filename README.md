@@ -209,6 +209,11 @@ ephemeral, non-reusable Tailscale auth key through the real OAuth API. The
 command does not print the auth key, revokes the generated key after validation,
 and is intentionally not part of `pnpm check`.
 
+By default Patchbay requests `tag:patchbay-agent` and
+`tag:patchbay-env-local`. If your OAuth client is restricted to different tags,
+set `TAILSCALE_AUTH_KEY_TAGS` to the comma-separated tag list allowed for that
+client before running the live smoke test.
+
 `pnpm test:tailscale:fake` runs in `pnpm check` and exercises the same
 enrollment path against a local fake Tailscale API using `TAILSCALE_API_BASE_URL`.
 
@@ -224,10 +229,17 @@ PATCHBAY_AGENT_AUTH_SECRET
 TAILSCALE_TAILNET
 TAILSCALE_OAUTH_CLIENT_ID
 TAILSCALE_OAUTH_CLIENT_SECRET
+TAILSCALE_AUTH_KEY_TAGS
 ```
 
 `GEMINI_MODEL` can be set as a repository variable; otherwise the workflow uses
 `gemini-2.5-flash`.
+
+`TAILSCALE_AUTH_KEY_TAGS` is optional. Leave it blank to request
+`tag:patchbay-agent` and `tag:patchbay-env-local`, or set a comma-separated
+list of tags that your Tailscale OAuth client is allowed to mint. Tailscale also
+supports `TAILSCALE_TAILNET=-` as shorthand for the tailnet that owns the OAuth
+access token.
 
 ### Readiness Posture
 

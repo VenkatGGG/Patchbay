@@ -13,6 +13,10 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const tailnet = envValue("TAILSCALE_TAILNET");
 const tailscaleClientId = envValue("TAILSCALE_OAUTH_CLIENT_ID");
 const tailscaleClientSecret = envValue("TAILSCALE_OAUTH_CLIENT_SECRET");
+const tailscaleAuthKeyTags = envList("TAILSCALE_AUTH_KEY_TAGS") ?? [
+  "tag:patchbay-agent",
+  "tag:patchbay-env-local"
+];
 const operatorToken =
   envValue("PATCHBAY_OPERATOR_TOKEN") ?? `patchbay-live-operator-${secret()}`;
 const enrollmentSecret =
@@ -67,7 +71,8 @@ async function main() {
       PATCHBAY_AGENT_TOKEN_TTL_MINUTES: "30",
       TAILSCALE_TAILNET: tailnet,
       TAILSCALE_OAUTH_CLIENT_ID: tailscaleClientId,
-      TAILSCALE_OAUTH_CLIENT_SECRET: tailscaleClientSecret
+      TAILSCALE_OAUTH_CLIENT_SECRET: tailscaleClientSecret,
+      TAILSCALE_AUTH_KEY_TAGS: tailscaleAuthKeyTags.join(",")
     }
   );
   children.push(web);
@@ -99,10 +104,12 @@ async function main() {
     },
     enrollmentHeaders(enrollmentTokenResponse.body.token)
   );
-  assert(
-    agentResponse.status === 201,
-    `expected Tailscale-backed agent enrollment to return 201, got ${agentResponse.status}`
-  );
+  if (agentResponse.status !== 201) {
+    const detail = agentResponse.body?.detail ? `: ${agentResponse.body.detail}` : "";
+    throw new Error(
+      `expected Tailscale-backed agent enrollment to return 201, got ${agentResponse.status}${detail}`
+    );
+  }
   assert(agentResponse.body.agentToken, "expected signed agent token");
   assert(agentResponse.body.tailscale.available === true, "expected Tailscale auth key");
   assert(
@@ -120,14 +127,7 @@ async function main() {
     !agentResponse.body.tailscale.authKeyPreview.includes("disabled"),
     "expected live Tailscale auth key preview"
   );
-  assert(
-    agentResponse.body.tailscale.tags.includes("tag:patchbay-agent"),
-    "expected patchbay agent tag"
-  );
-  assert(
-    agentResponse.body.tailscale.tags.includes("tag:patchbay-env-local"),
-    "expected normalized environment tag"
-  );
+  assertTags(agentResponse.body.tailscale.tags, tailscaleAuthKeyTags, "live auth key");
   assert(
     Date.parse(agentResponse.body.tailscale.expiresAt) > Date.now(),
     "expected future auth key expiry"
@@ -162,6 +162,18 @@ async function main() {
 function envValue(key) {
   const value = process.env[key] ?? localEnv.get(key);
   return value?.trim() ? value.trim() : undefined;
+}
+
+function envList(key) {
+  const value = envValue(key);
+  if (!value) {
+    return undefined;
+  }
+
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function secret() {
@@ -240,6 +252,16 @@ function prefix(command, chunk) {
     .filter(Boolean)
     .map((line) => `[${command}] ${line}\n`)
     .join("");
+}
+
+function assertTags(actual, expected, label) {
+  for (const tag of expected) {
+    assert(actual.includes(tag), `expected ${label} to include ${tag}`);
+  }
+  assert(
+    actual.length === expected.length,
+    `expected ${label} tags ${expected.join(",")}, got ${actual.join(",")}`
+  );
 }
 
 async function waitForJson(path) {

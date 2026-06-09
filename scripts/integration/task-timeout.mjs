@@ -45,7 +45,11 @@ async function main() {
       PATCHBAY_TASK_TIMEOUT_SECONDS: "1",
       PATCHBAY_LLM_PROVIDER: "gemini",
       GEMINI_API_KEY: "",
-      PATCHBAY_OPERATOR_TOKEN: operatorToken
+      PATCHBAY_OPERATOR_TOKEN: operatorToken,
+      TAILSCALE_TAILNET: "",
+      TAILSCALE_OAUTH_CLIENT_ID: "",
+      TAILSCALE_OAUTH_CLIENT_SECRET: "",
+      TAILSCALE_AUTH_KEY_TAGS: ""
     }
   );
   children.push(web);

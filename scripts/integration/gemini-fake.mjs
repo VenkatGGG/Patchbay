@@ -50,7 +50,8 @@ async function main() {
       PATCHBAY_AGENT_TOKEN_TTL_MINUTES: "30",
       TAILSCALE_TAILNET: "",
       TAILSCALE_OAUTH_CLIENT_ID: "",
-      TAILSCALE_OAUTH_CLIENT_SECRET: ""
+      TAILSCALE_OAUTH_CLIENT_SECRET: "",
+      TAILSCALE_AUTH_KEY_TAGS: ""
     }
   );
   children.push(web);

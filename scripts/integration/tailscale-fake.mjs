@@ -13,6 +13,7 @@ const clientSecret = "fake-client-secret";
 const accessToken = "fake-access-token";
 const authKeyId = "fake-auth-key-id";
 const authKey = "tskey-auth-fake-local-1234567890";
+const authKeyTags = ["tag:patchbay-agent", "tag:patchbay-env-local", "tag:patchbay-custom"];
 const requests = [];
 const children = [];
 let fakeMode = "success";
@@ -53,6 +54,7 @@ async function main() {
       TAILSCALE_TAILNET: tailnet,
       TAILSCALE_OAUTH_CLIENT_ID: clientId,
       TAILSCALE_OAUTH_CLIENT_SECRET: clientSecret,
+      TAILSCALE_AUTH_KEY_TAGS: authKeyTags.join(","),
       TAILSCALE_API_BASE_URL: fakeTailscaleBaseUrl
     }
   );
@@ -87,14 +89,7 @@ async function main() {
     agentResponse.body.tailscale.authKeyPreview === "tskey-au...7890",
     `expected auth key preview, got ${agentResponse.body.tailscale.authKeyPreview}`
   );
-  assert(
-    agentResponse.body.tailscale.tags.includes("tag:patchbay-agent"),
-    "expected patchbay agent tag"
-  );
-  assert(
-    agentResponse.body.tailscale.tags.includes("tag:patchbay-env-local"),
-    "expected normalized environment tag"
-  );
+  assertTags(agentResponse.body.tailscale.tags, authKeyTags, "bootstrap response");
   assert(
     agentResponse.body.agent.tailscale.enabled === true,
     "expected enrolled agent to record Tailscale enabled"
@@ -129,20 +124,13 @@ async function main() {
   assert(keyBody.capabilities.devices.create.reusable === false, "expected non-reusable key");
   assert(keyBody.capabilities.devices.create.ephemeral === true, "expected ephemeral key");
   assert(keyBody.capabilities.devices.create.preauthorized === true, "expected preauthorized key");
-  assert(
-    keyBody.capabilities.devices.create.tags.includes("tag:patchbay-agent"),
-    "expected auth key agent tag"
-  );
-  assert(
-    keyBody.capabilities.devices.create.tags.includes("tag:patchbay-env-local"),
-    "expected auth key environment tag"
-  );
+  assertTags(keyBody.capabilities.devices.create.tags, authKeyTags, "auth key request");
 
   const failureCases = [
     {
       mode: "token-status-error",
       agentName: "fake-tailscale-token-status-agent",
-      detail: "Tailscale token request failed: 503"
+      detail: "Tailscale token request failed: 503 (temporary fake OAuth outage)"
     },
     {
       mode: "token-network-failure",
@@ -162,7 +150,7 @@ async function main() {
     {
       mode: "key-status-error",
       agentName: "fake-tailscale-key-status-agent",
-      detail: "Tailscale auth key request failed: 503"
+      detail: "Tailscale auth key request failed: 503 (temporary fake key outage)"
     },
     {
       mode: "key-network-failure",
@@ -329,6 +317,16 @@ function jsonResponse(response, status, body) {
 function textResponse(response, status, body) {
   response.writeHead(status, { "content-type": "text/plain" });
   response.end(body);
+}
+
+function assertTags(actual, expected, label) {
+  for (const tag of expected) {
+    assert(actual.includes(tag), `expected ${label} to include ${tag}`);
+  }
+  assert(
+    actual.length === expected.length,
+    `expected ${label} tags ${expected.join(",")}, got ${actual.join(",")}`
+  );
 }
 
 async function readBody(request) {
