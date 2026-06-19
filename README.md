@@ -293,6 +293,11 @@ When enrollment authentication is required, the signing secret must be
 explicitly configured and nonempty. Patchbay does not use a development
 fallback secret.
 
+When enrollment authentication is optional, an explicitly configured
+`PATCHBAY_ENROLLMENT_SECRET` still enables token minting. Without that secret,
+enrollment remains directly open and the mint endpoint reports
+`ENROLLMENT_AUTH_DISABLED`.
+
 Mint a token:
 
 ```bash

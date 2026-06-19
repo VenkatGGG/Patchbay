@@ -4,7 +4,8 @@ import { parseJsonBody } from "@/lib/api-validation";
 import { authConfigurationFailure } from "@/lib/auth-configuration";
 import {
   assertEnrollmentAuthConfigured,
-  createEnrollmentToken
+  createEnrollmentToken,
+  enrollmentTokenMintingStatus
 } from "@/lib/enrollment-token";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
@@ -19,6 +20,17 @@ export async function POST(
 ) {
   const unauthorized = requireOperator(request);
   if (unauthorized) return unauthorized;
+
+  const minting = enrollmentTokenMintingStatus();
+  if (!minting.required && !minting.available) {
+    return NextResponse.json(
+      {
+        error: "Enrollment authentication is disabled",
+        code: "ENROLLMENT_AUTH_DISABLED"
+      },
+      { status: 409 }
+    );
+  }
 
   try {
     assertEnrollmentAuthConfigured();

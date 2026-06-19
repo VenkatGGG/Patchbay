@@ -20,6 +20,7 @@ try {
 
   await verifyAgentMisconfigurationHasNoSideEffects(tailscaleBaseUrl);
   await verifyEnrollmentMisconfigurationResponses();
+  await verifyOptionalEnrollmentTokenMinting();
   await verifyOpenLocalMode();
 
   console.log(
@@ -30,6 +31,8 @@ try {
         scenarios: [
           "agent secret missing before enrollment side effects",
           "enrollment secret missing returns sanitized 503",
+          "optional enrollment secret can mint a token",
+          "optional enrollment without secret returns disabled",
           "open local enrollment omits signed agent token"
         ]
       },
@@ -58,6 +61,20 @@ async function verifyAgentMisconfigurationHasNoSideEffects(tailscaleBaseUrl) {
     TAILSCALE_API_BASE_URL: tailscaleBaseUrl
   });
   const before = await request(server.baseUrl, "/api/state");
+  const mint = await request(
+    server.baseUrl,
+    "/api/environments/env_local/enrollment-token",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ttlMinutes: 15 })
+    }
+  );
+  assert(mint.status === 200, `expected required minting 200, got ${mint.status}`);
+  assert(
+    typeof mint.body.token === "string" && mint.body.token.split(".").length === 2,
+    "expected required signed enrollment token"
+  );
   const token = signedEnrollmentToken(
     "env_local",
     "integration-enrollment-secret"
@@ -149,6 +166,25 @@ async function verifyOpenLocalMode() {
     PATCHBAY_AGENT_AUTH_SECRET: ""
   });
 
+  const mint = await request(
+    server.baseUrl,
+    "/api/environments/env_local/enrollment-token",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ttlMinutes: 15 })
+    }
+  );
+  assert(mint.status === 409, `expected disabled minting 409, got ${mint.status}`);
+  assert(
+    mint.body.code === "ENROLLMENT_AUTH_DISABLED",
+    `expected disabled code, got ${mint.body.code}`
+  );
+  assert(
+    mint.body.error === "Enrollment authentication is disabled",
+    `unexpected disabled error: ${mint.body.error}`
+  );
+
   const enrollment = await request(server.baseUrl, "/api/agent/enroll", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -175,6 +211,31 @@ async function verifyOpenLocalMode() {
   assert(refresh.status === 200, `expected open refresh 200, got ${refresh.status}`);
   assert(refresh.body.authRequired === false, "expected explicit no-auth-required response");
   assert(!refresh.body.agentToken, "open refresh must not sign an agent token");
+  await stop(server.child);
+}
+
+async function verifyOptionalEnrollmentTokenMinting() {
+  const server = await startWeb(3114, {
+    PATCHBAY_REQUIRE_ENROLLMENT_TOKEN: "false",
+    PATCHBAY_ENROLLMENT_SECRET: "optional-enrollment-secret",
+    PATCHBAY_REQUIRE_AGENT_TOKEN: "false",
+    PATCHBAY_AGENT_AUTH_SECRET: ""
+  });
+
+  const mint = await request(
+    server.baseUrl,
+    "/api/environments/env_local/enrollment-token",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ttlMinutes: 15 })
+    }
+  );
+  assert(mint.status === 200, `expected optional minting 200, got ${mint.status}`);
+  assert(
+    typeof mint.body.token === "string" && mint.body.token.split(".").length === 2,
+    "expected signed optional enrollment token"
+  );
   await stop(server.child);
 }
 

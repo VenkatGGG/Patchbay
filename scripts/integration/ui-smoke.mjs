@@ -220,7 +220,10 @@ function assertUiHardeningSource() {
     "Diagnostic tasks",
     "Incident sessions",
     'className="table-action"',
-    'label: "Retention"'
+    'label: "Retention"',
+    "const enrollmentTokenAvailable =",
+    "Enrollment is open",
+    "No enrollment token is required"
   ]) {
     assert(dashboard.includes(expected), `expected dashboard source to include ${expected}`);
   }

@@ -89,6 +89,13 @@ export function enrollmentAuthStatus() {
   };
 }
 
+export function enrollmentTokenMintingStatus() {
+  return {
+    available: Boolean(configuredEnrollmentSecret()),
+    required: isEnrollmentTokenRequired()
+  };
+}
+
 export function assertEnrollmentAuthConfigured() {
   if (isEnrollmentTokenRequired()) {
     enrollmentSecret();

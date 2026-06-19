@@ -153,6 +153,10 @@ export function ControlPlaneDashboard({
       ? 0
       : Math.round((taskSummary.completed / selectedTasks.length) * 100);
   const onlineAgents = state.agents.filter((agent) => agent.status === "online").length;
+  const enrollmentTokenAvailable =
+    runtimeStatus === null || runtimeStatus.enrollmentAuth.secretConfigured;
+  const enrollmentOpen =
+    runtimeStatus !== null && runtimeStatus.enrollmentAuth.required === false;
 
   async function fetchControlPlane(input: RequestInfo | URL, init: RequestInit = {}) {
     const headers = new Headers(init.headers);
@@ -573,29 +577,35 @@ export function ControlPlaneDashboard({
               subtitle={selectedEnvironment?.id ?? "No environment selected"}
             >
               <div className="enrollment-control">
-                <div className="form-row">
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    max={1440}
-                    value={enrollmentTtlMinutes}
-                    onChange={(event) => setEnrollmentTtlMinutes(event.target.value)}
-                    aria-label="Enrollment token TTL minutes"
-                  />
-                  <button
-                    className="button"
-                    type="button"
-                    onClick={mintEnrollmentToken}
-                    disabled={
-                      busyAction !== null ||
-                      !selectedEnvironment ||
-                      !isValidTtl(enrollmentTtlMinutes)
-                    }
-                  >
-                    {busyAction === "enrollment" ? "Minting" : "Mint Token"}
-                  </button>
-                </div>
+                {enrollmentTokenAvailable ? (
+                  <div className="form-row">
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={enrollmentTtlMinutes}
+                      onChange={(event) => setEnrollmentTtlMinutes(event.target.value)}
+                      aria-label="Enrollment token TTL minutes"
+                    />
+                    <button
+                      className="button"
+                      type="button"
+                      onClick={mintEnrollmentToken}
+                      disabled={
+                        busyAction !== null ||
+                        !selectedEnvironment ||
+                        !isValidTtl(enrollmentTtlMinutes)
+                      }
+                    >
+                      {busyAction === "enrollment" ? "Minting" : "Mint Token"}
+                    </button>
+                  </div>
+                ) : enrollmentOpen ? (
+                  <p className="muted-line">
+                    Enrollment is open. No enrollment token is required.
+                  </p>
+                ) : null}
                 <div className="enrollment-command">
                   <div className="command-heading">
                     <span>Agent command</span>
@@ -605,7 +615,11 @@ export function ControlPlaneDashboard({
                       <StatusPill value="local" />
                     )}
                   </div>
-                  <pre className="command-block">{agentRunCommand(enrollmentToken?.token)}</pre>
+                  <pre className="command-block">
+                    {enrollmentOpen && !enrollmentTokenAvailable
+                      ? "pnpm agent:run"
+                      : agentRunCommand(enrollmentToken?.token)}
+                  </pre>
                   {enrollmentToken && (
                     <p>
                       Expires {new Date(enrollmentToken.expiresAt).toLocaleString()}

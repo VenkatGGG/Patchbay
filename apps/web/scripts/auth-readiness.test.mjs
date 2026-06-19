@@ -106,6 +106,35 @@ test("configured enrollment tokens retain their valid verification flow", () => 
   assert.equal(verification.payload?.environmentId, "env_local");
 });
 
+test("optional enrollment authentication can mint with an explicit secret", () => {
+  process.env.PATCHBAY_REQUIRE_ENROLLMENT_TOKEN = "false";
+  process.env.PATCHBAY_ENROLLMENT_SECRET = "optional-enrollment-secret";
+
+  const token = enrollment.createEnrollmentToken("env_local");
+
+  assert.equal(token.split(".").length, 2);
+  assert.deepEqual(enrollment.enrollmentTokenMintingStatus(), {
+    available: true,
+    required: false
+  });
+});
+
+test("optional enrollment without a secret reports token minting disabled", () => {
+  process.env.PATCHBAY_REQUIRE_ENROLLMENT_TOKEN = "false";
+  delete process.env.PATCHBAY_ENROLLMENT_SECRET;
+
+  assert.deepEqual(enrollment.enrollmentTokenMintingStatus(), {
+    available: false,
+    required: false
+  });
+  assert.throws(
+    () => enrollment.createEnrollmentToken("env_local"),
+    (error) =>
+      error.name === "AuthConfigurationError" &&
+      error.code === "AUTH_CONFIGURATION_ERROR"
+  );
+});
+
 test("required agent authentication reports blank secrets as unconfigured", () => {
   process.env.PATCHBAY_REQUIRE_AGENT_TOKEN = "true";
 
