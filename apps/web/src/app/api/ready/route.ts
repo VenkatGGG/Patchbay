@@ -4,7 +4,10 @@ import { apiValidationStatus } from "@/lib/api-validation";
 import { enrollmentAuthStatus } from "@/lib/enrollment-token";
 import { listLLMProviders } from "@/lib/llm";
 import { operatorAuthStatus } from "@/lib/operator-auth";
-import { buildReadinessPosture } from "@/lib/readiness";
+import {
+  buildReadinessPosture,
+  readinessHttpResponse
+} from "@/lib/readiness";
 import { artifactRetentionStatus } from "@/lib/retention";
 import { getStoreRuntime, store } from "@/lib/store";
 import { tailscaleRuntimeStatus } from "@/lib/tailscale";
@@ -30,10 +33,11 @@ export async function GET() {
       runtime,
       tailscale
     });
+    const readiness = readinessHttpResponse(posture);
 
     return NextResponse.json(
       {
-        status: "ready",
+        status: readiness.status,
         service: "patchbay",
         timestamp: new Date().toISOString(),
         agentAuth,
@@ -54,6 +58,7 @@ export async function GET() {
         llmProviders
       },
       {
+        status: readiness.httpStatus,
         headers: {
           "cache-control": "no-store"
         }

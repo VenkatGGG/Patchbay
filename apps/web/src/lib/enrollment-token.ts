@@ -31,6 +31,15 @@ export function verifyEnrollmentToken(
     return { ok: true };
   }
 
+  const secret = configuredEnrollmentSecret();
+  if (!secret) {
+    return {
+      ok: false,
+      reason:
+        "Enrollment authentication is misconfigured: PATCHBAY_ENROLLMENT_SECRET must be explicitly configured"
+    };
+  }
+
   if (!token) {
     return { ok: false, reason: "Enrollment token is required" };
   }
@@ -44,7 +53,7 @@ export function verifyEnrollmentToken(
     return { ok: false, reason: "Enrollment token is malformed" };
   }
 
-  if (!safeEqual(signature, sign(body))) {
+  if (!safeEqual(signature, sign(body, secret))) {
     return { ok: false, reason: "Enrollment token signature is invalid" };
   }
 
@@ -82,7 +91,7 @@ export function isEnrollmentTokenRequired() {
 export function enrollmentAuthStatus() {
   return {
     required: isEnrollmentTokenRequired(),
-    secretConfigured: Boolean(process.env.PATCHBAY_ENROLLMENT_SECRET)
+    secretConfigured: Boolean(configuredEnrollmentSecret())
   };
 }
 
@@ -91,12 +100,26 @@ export function enrollmentTokenFromAuthorization(header: string | null) {
   return match?.[1];
 }
 
-function sign(body: string) {
-  return createHmac("sha256", enrollmentSecret()).update(body).digest("base64url");
+function sign(body: string, secret = enrollmentSecret()) {
+  return createHmac("sha256", secret).update(body).digest("base64url");
 }
 
 function enrollmentSecret() {
-  return process.env.PATCHBAY_ENROLLMENT_SECRET ?? "patchbay-local-dev-secret";
+  const secret = configuredEnrollmentSecret();
+  if (secret) {
+    return secret;
+  }
+  if (isEnrollmentTokenRequired()) {
+    throw new Error(
+      "PATCHBAY_ENROLLMENT_SECRET must be explicitly configured when PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true"
+    );
+  }
+  return "patchbay-local-dev-secret";
+}
+
+function configuredEnrollmentSecret() {
+  const secret = process.env.PATCHBAY_ENROLLMENT_SECRET?.trim();
+  return secret && secret.length > 0 ? secret : undefined;
 }
 
 function safeEqual(a: string, b: string) {

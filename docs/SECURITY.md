@@ -82,8 +82,12 @@ Minimum requirements:
   dashboard diagnostic rendering.
 - Treat env-style, YAML/JSON-style, and camelCase secret key forms as sensitive.
 - Never send raw secrets to Gemini.
-- Keep `GEMINI_API_KEY`, `PATCHBAY_OPERATOR_TOKEN`, and
-  `PATCHBAY_AGENT_AUTH_SECRET` in ignored local or deployment secret stores.
+- Keep `GEMINI_API_KEY`, `PATCHBAY_OPERATOR_TOKEN`,
+  `PATCHBAY_ENROLLMENT_SECRET`, and `PATCHBAY_AGENT_AUTH_SECRET` in ignored local
+  or deployment secret stores.
+- Required enrollment and agent authentication modes must fail closed when
+  their dedicated signing secret is empty; signing secrets are never shared
+  across those authentication boundaries.
 - Use `pnpm env:local` to create the ignored `apps/web/.env.local` envelope
   with generated local signing tokens before adding real provider credentials.
 - Keep artifact retention configurable with `PATCHBAY_ARTIFACT_RETENTION_DAYS`;

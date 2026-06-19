@@ -19,6 +19,16 @@ export type ReadinessPosture = {
   checks: ReadinessCheck[];
 };
 
+export function readinessHttpResponse(
+  posture: Pick<ReadinessPosture, "level">
+) {
+  const blocked = posture.level === "blocked";
+  return {
+    status: blocked ? ("not_ready" as const) : ("ready" as const),
+    httpStatus: blocked ? 503 : 200
+  };
+}
+
 type RuntimeStatus = {
   storage: string;
   postgresConfigured: boolean;
@@ -88,23 +98,35 @@ export function buildReadinessPosture(input: ReadinessInput): ReadinessPosture {
       id: "enrollment_auth",
       label: "Enrollment Auth",
       status: requiredSecretStatus(input.enrollmentAuth),
-      summary: input.enrollmentAuth.required
-        ? "Agent enrollment requires signed tokens"
-        : "Agent enrollment does not require signed tokens",
-      detail: input.enrollmentAuth.required
-        ? "PATCHBAY_ENROLLMENT_SECRET signs short-lived environment-scoped enrollment tokens."
-        : "Set PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true and PATCHBAY_ENROLLMENT_SECRET."
+      summary: requiredSecretSummary(
+        input.enrollmentAuth,
+        "Agent enrollment requires signed tokens",
+        "Agent enrollment does not require signed tokens",
+        "Enrollment signing secret is missing"
+      ),
+      detail: requiredSecretDetail(
+        input.enrollmentAuth,
+        "PATCHBAY_ENROLLMENT_SECRET signs short-lived environment-scoped enrollment tokens.",
+        "Set PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true and PATCHBAY_ENROLLMENT_SECRET.",
+        "PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true requires a nonempty PATCHBAY_ENROLLMENT_SECRET."
+      )
     },
     {
       id: "agent_auth",
       label: "Agent API Auth",
       status: requiredSecretStatus(input.agentAuth),
-      summary: input.agentAuth.required
-        ? `Agent API tokens expire after ${input.agentAuth.tokenTtlMinutes} minutes`
-        : "Agent task APIs accept unsigned local requests",
-      detail: input.agentAuth.required
-        ? "Polling, token refresh, and task event ingestion require signed agent API tokens."
-        : "Set PATCHBAY_REQUIRE_AGENT_TOKEN=true and PATCHBAY_AGENT_AUTH_SECRET."
+      summary: requiredSecretSummary(
+        input.agentAuth,
+        `Agent API tokens expire after ${input.agentAuth.tokenTtlMinutes} minutes`,
+        "Agent task APIs accept unsigned local requests",
+        "Agent API signing secret is missing"
+      ),
+      detail: requiredSecretDetail(
+        input.agentAuth,
+        "Polling, token refresh, and task event ingestion require signed agent API tokens.",
+        "Set PATCHBAY_REQUIRE_AGENT_TOKEN=true and PATCHBAY_AGENT_AUTH_SECRET.",
+        "PATCHBAY_REQUIRE_AGENT_TOKEN=true requires a nonempty PATCHBAY_AGENT_AUTH_SECRET."
+      )
     },
     {
       id: "api_limits",
@@ -174,6 +196,30 @@ function requiredSecretStatus(status: RequiredSecretStatus): ReadinessCheckStatu
   }
 
   return status.secretConfigured ? "ready" : "critical";
+}
+
+function requiredSecretSummary(
+  status: RequiredSecretStatus,
+  configured: string,
+  optional: string,
+  missing: string
+) {
+  if (!status.required) {
+    return optional;
+  }
+  return status.secretConfigured ? configured : missing;
+}
+
+function requiredSecretDetail(
+  status: RequiredSecretStatus,
+  configured: string,
+  optional: string,
+  missing: string
+) {
+  if (!status.required) {
+    return optional;
+  }
+  return status.secretConfigured ? configured : missing;
 }
 
 function artifactRetentionCheckStatus(

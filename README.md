@@ -286,7 +286,12 @@ signed environment-scoped tokens:
 
 ```bash
 PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true
+PATCHBAY_ENROLLMENT_SECRET=<strong-random-secret>
 ```
+
+When enrollment authentication is required, the signing secret must be
+explicitly configured and nonempty. Patchbay does not use a development
+fallback secret.
 
 Mint a token:
 
@@ -334,6 +339,11 @@ PATCHBAY_AGENT_TOKEN_TTL_MINUTES=1440
 ```
 
 The TTL defaults to 24 hours and is capped at 7 days.
+When agent authentication is required, `PATCHBAY_AGENT_AUTH_SECRET` must be
+explicitly configured and nonempty; it never falls back to the enrollment
+secret. `/api/ready` returns HTTP 503 with `status: "not_ready"` when either
+required signing secret is missing. Optional local-development warnings remain
+HTTP 200 with a degraded posture.
 
 ### Optional Tailscale Bootstrap
 

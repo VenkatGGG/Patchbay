@@ -40,8 +40,18 @@ export function verifyAgentAuthorization(
   expectedAgentId?: string,
   options: AgentAuthOptions = {}
 ): AgentAuthResult {
-  if (!agentTokenRequired() && !options.requireToken) {
+  const tokenRequired = agentTokenRequired() || options.requireToken;
+  if (!tokenRequired) {
     return { ok: true };
+  }
+
+  const secret = configuredAgentSecret();
+  if (!secret) {
+    return {
+      ok: false,
+      reason:
+        "Agent authentication is misconfigured: PATCHBAY_AGENT_AUTH_SECRET must be explicitly configured"
+    };
   }
 
   const token = bearerToken(authorization);
@@ -49,7 +59,7 @@ export function verifyAgentAuthorization(
     return { ok: false, reason: "Agent token required" };
   }
 
-  const payload = verifyAgentToken(token);
+  const payload = verifyAgentToken(token, secret);
   if (!payload) {
     return { ok: false, reason: "Agent token rejected" };
   }
@@ -74,18 +84,18 @@ export function verifyAgentAuthorization(
 export function agentAuthStatus() {
   return {
     required: agentTokenRequired(),
-    secretConfigured: Boolean(process.env.PATCHBAY_AGENT_AUTH_SECRET),
+    secretConfigured: Boolean(configuredAgentSecret()),
     tokenTtlMinutes: agentTokenTtlMinutes()
   };
 }
 
-function verifyAgentToken(token: string) {
+function verifyAgentToken(token: string, secret: string) {
   const parts = token.split(".");
   if (parts.length !== 2) {
     return undefined;
   }
   const [body, signature] = parts;
-  if (!body || !signature || !safeEqual(signature, sign(body))) {
+  if (!body || !signature || !safeEqual(signature, sign(body, secret))) {
     return undefined;
   }
 
@@ -127,16 +137,26 @@ function bearerToken(header: string | null) {
   return match?.[1];
 }
 
-function sign(body: string) {
-  return createHmac("sha256", agentSecret()).update(body).digest("base64url");
+function sign(body: string, secret = agentSecret()) {
+  return createHmac("sha256", secret).update(body).digest("base64url");
 }
 
 function agentSecret() {
-  return (
-    process.env.PATCHBAY_AGENT_AUTH_SECRET ??
-    process.env.PATCHBAY_ENROLLMENT_SECRET ??
-    "patchbay-local-dev-agent-secret"
-  );
+  const secret = configuredAgentSecret();
+  if (secret) {
+    return secret;
+  }
+  if (agentTokenRequired()) {
+    throw new Error(
+      "PATCHBAY_AGENT_AUTH_SECRET must be explicitly configured when PATCHBAY_REQUIRE_AGENT_TOKEN=true"
+    );
+  }
+  return "patchbay-local-dev-agent-secret";
+}
+
+function configuredAgentSecret() {
+  const secret = process.env.PATCHBAY_AGENT_AUTH_SECRET?.trim();
+  return secret && secret.length > 0 ? secret : undefined;
 }
 
 function safeEqual(actual: string, expected: string) {
