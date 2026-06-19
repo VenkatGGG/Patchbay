@@ -1,11 +1,12 @@
-import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
+import { discoverMigrations, migrateDatabase } from "./migrations.mjs";
+
 const { Client } = pg;
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const schemaPath = join(currentDir, "..", "db", "schema.sql");
+const migrationsPath = join(currentDir, "..", "db", "migrations");
 const connectionString =
   process.env.DATABASE_URL ??
   "postgres://patchbay:patchbay@localhost:5432/patchbay";
@@ -36,9 +37,14 @@ const ids = {
 try {
   await client.connect();
   connected = true;
-  const schema = await readFile(schemaPath, "utf8");
-  await client.query(schema);
-  await client.query(schema);
+  const migrations = await discoverMigrations(migrationsPath);
+  await migrateDatabase(client, migrations);
+  const secondRun = await migrateDatabase(client, migrations);
+
+  if (secondRun.applied.length !== 0) {
+    throw new Error("Migration rerun should not apply already-recorded migrations");
+  }
+  await assertMigrationLedger(migrations);
 
   await assertConstraintsInstalled();
   await seedValidGraph();
@@ -232,6 +238,64 @@ async function assertConstraintsInstalled() {
   if (missing.length > 0) {
     throw new Error(`Missing Postgres constraints: ${missing.join(", ")}`);
   }
+}
+
+async function assertMigrationLedger(migrations) {
+  const result = await client.query(
+    `
+      SELECT version, name, checksum, applied_at
+      FROM schema_migrations
+      ORDER BY version ASC
+    `
+  );
+  const expected = migrations.map(({ version, name, checksum }) => ({
+    version,
+    name,
+    checksum
+  }));
+  const actual = result.rows.map((row) => ({
+    version: Number(row.version),
+    name: row.name,
+    checksum: row.checksum.trim()
+  }));
+
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Migration ledger mismatch: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`
+    );
+  }
+  if (result.rows.some((row) => !(row.applied_at instanceof Date))) {
+    throw new Error("Migration ledger is missing applied_at timestamps");
+  }
+
+  const version = migrations[0]?.version;
+  if (version === undefined) {
+    throw new Error("Expected at least one migration");
+  }
+  await assertRejectsImmutableLedger(
+    "update",
+    "UPDATE schema_migrations SET name = name WHERE version = $1",
+    [version]
+  );
+  await assertRejectsImmutableLedger(
+    "delete",
+    "DELETE FROM schema_migrations WHERE version = $1",
+    [version]
+  );
+}
+
+async function assertRejectsImmutableLedger(operation, text, values) {
+  try {
+    await client.query(text, values);
+  } catch (error) {
+    if (error.code !== "P0001") {
+      throw new Error(
+        `Migration ledger ${operation} failed with ${error.code ?? "unknown"}, expected P0001`
+      );
+    }
+    return;
+  }
+  throw new Error(`Migration ledger accepted ${operation}, expected rejection`);
 }
 
 async function seedValidGraph() {
