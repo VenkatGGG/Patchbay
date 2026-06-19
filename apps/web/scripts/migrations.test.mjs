@@ -7,7 +7,8 @@ import test from "node:test";
 import {
   discoverMigrations,
   migrateDatabase,
-  sha256
+  sha256,
+  validateMigrationSql
 } from "./migrations.mjs";
 
 test("discoverMigrations returns numerically ordered migrations with checksums", async () => {
@@ -43,6 +44,64 @@ test("discoverMigrations rejects duplicate numeric versions", async () => {
   await assert.rejects(
     discoverMigrations(directory),
     /duplicate migration version 1/i
+  );
+});
+
+test("discoverMigrations rejects malformed SQL filenames", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "patchbay-migrations-"));
+  await writeFile(join(directory, "0001_initial.sql"), "SELECT 1;\n");
+  await writeFile(join(directory, "second.sql"), "SELECT 2;\n");
+
+  await assert.rejects(
+    discoverMigrations(directory),
+    /malformed migration filename second\.sql/i
+  );
+});
+
+test("discoverMigrations rejects an empty migration directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "patchbay-migrations-"));
+  await writeFile(join(directory, "README.md"), "ignored");
+
+  await assert.rejects(discoverMigrations(directory), /no migrations found/i);
+});
+
+test("sha256 canonicalizes CRLF line endings", () => {
+  assert.equal(sha256("SELECT 1;\r\nSELECT 2;\r\n"), sha256("SELECT 1;\nSELECT 2;\n"));
+});
+
+test("validateMigrationSql rejects transaction control statements", () => {
+  for (const sql of [
+    "BEGIN;",
+    "COMMIT;",
+    "ROLLBACK;",
+    "SAVEPOINT before_change;",
+    "RELEASE SAVEPOINT before_change;",
+    "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
+    "START TRANSACTION;",
+    "ABORT;",
+    "END TRANSACTION;",
+    "PREPARE TRANSACTION 'migration';"
+  ]) {
+    assert.throws(() => validateMigrationSql(sql, "0001_test.sql"), /transaction control/i);
+  }
+});
+
+test("validateMigrationSql ignores transaction words in comments and quoted text", () => {
+  assert.doesNotThrow(() =>
+    validateMigrationSql(
+      `
+        -- BEGIN;
+        /* COMMIT; */
+        SELECT 'ROLLBACK', "SAVEPOINT";
+        SELECT E'quoted\\' text; COMMIT;';
+        DO $body$
+        BEGIN
+          RAISE NOTICE 'SET TRANSACTION';
+        END
+        $body$;
+      `,
+      "0001_test.sql"
+    )
   );
 });
 
@@ -89,6 +148,27 @@ test("migrateDatabase rejects changed content for an applied migration", async (
   assert.equal(client.locked, false);
 });
 
+test("migrateDatabase requires applied migrations to be an exact prefix", async () => {
+  const migrations = [
+    migration(1, "initial", "SELECT 1;"),
+    migration(2, "second", "SELECT 2;")
+  ];
+  const client = new RecordingClient([
+    {
+      version: 2,
+      name: "second",
+      checksum: migrations[1].checksum
+    }
+  ]);
+
+  await assert.rejects(
+    migrateDatabase(client, migrations),
+    /exact prefix.*expected version 1.*found 2/i
+  );
+
+  assert.deepEqual(client.transactionStatements, []);
+});
+
 test("migrateDatabase rolls back a failed migration and releases the lock", async () => {
   const failedSql = "SELECT fail;";
   const client = new RecordingClient([], failedSql);
@@ -104,6 +184,40 @@ test("migrateDatabase rolls back a failed migration and releases the lock", asyn
   assert.equal(client.locked, false);
 });
 
+test("migrateDatabase preserves migration and rollback failures", async () => {
+  const client = new RecordingClient([], "SELECT fail;", {
+    rollback: new Error("rollback cleanup failed")
+  });
+
+  await assert.rejects(
+    migrateDatabase(client, [migration(1, "broken", "SELECT fail;")]),
+    (error) => {
+      assert(error instanceof AggregateError);
+      assert.deepEqual(
+        error.errors.map(({ message }) => message),
+        ["migration failed", "rollback cleanup failed"]
+      );
+      return true;
+    }
+  );
+});
+
+test("migrateDatabase preserves migration and unlock failures", async () => {
+  const client = new RecordingClient([], "SELECT fail;", {
+    unlock: new Error("unlock cleanup failed")
+  });
+
+  await assert.rejects(
+    migrateDatabase(client, [migration(1, "broken", "SELECT fail;")]),
+    (error) => {
+      assert(error instanceof AggregateError);
+      assert.equal(error.errors[0].message, "migration failed");
+      assert.equal(error.errors[1].message, "unlock cleanup failed");
+      return true;
+    }
+  );
+});
+
 function migration(version, name, sql) {
   return {
     version,
@@ -115,9 +229,10 @@ function migration(version, name, sql) {
 }
 
 class RecordingClient {
-  constructor(applied = [], failedSql = null) {
+  constructor(applied = [], failedSql = null, cleanupFailures = {}) {
     this.applied = applied;
     this.failedSql = failedSql;
+    this.cleanupFailures = cleanupFailures;
     this.locked = false;
     this.ledgerProtected = false;
     this.currentTransaction = null;
@@ -133,6 +248,9 @@ class RecordingClient {
       return { rows: [] };
     }
     if (normalized.includes("pg_advisory_unlock")) {
+      if (this.cleanupFailures.unlock) {
+        throw this.cleanupFailures.unlock;
+      }
       this.locked = false;
       return { rows: [] };
     }
@@ -153,6 +271,9 @@ class RecordingClient {
     if (normalized === "COMMIT" || normalized === "ROLLBACK") {
       this.currentTransaction.push(normalized);
       this.currentTransaction = null;
+      if (normalized === "ROLLBACK" && this.cleanupFailures.rollback) {
+        throw this.cleanupFailures.rollback;
+      }
       return { rows: [] };
     }
     if (normalized.startsWith("INSERT INTO schema_migrations")) {

@@ -2,7 +2,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
-import { discoverMigrations, migrateDatabase } from "./migrations.mjs";
+import {
+  discoverMigrations,
+  migrateDatabase,
+  sha256
+} from "./migrations.mjs";
 
 const { Client } = pg;
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +49,8 @@ try {
     throw new Error("Migration rerun should not apply already-recorded migrations");
   }
   await assertMigrationLedger(migrations);
+  await assertFailedMigrationIsAtomic();
+  await assertConcurrentMigrationsSerialize();
 
   await assertConstraintsInstalled();
   await seedValidGraph();
@@ -296,6 +302,123 @@ async function assertRejectsImmutableLedger(operation, text, values) {
     return;
   }
   throw new Error(`Migration ledger accepted ${operation}, expected rejection`);
+}
+
+async function assertFailedMigrationIsAtomic() {
+  const schema = `migration_atomic_${suffix}`;
+  const migrationClient = await createSchemaClient(schema);
+
+  try {
+    await migrationClient.query(`CREATE SCHEMA ${quoteIdentifier(schema)}`);
+    await migrationClient.query(`SET search_path TO ${quoteIdentifier(schema)}`);
+
+    await assertRejects(
+      migrateDatabase(migrationClient, [
+        smokeMigration(
+          1,
+          "atomic_failure",
+          `
+            CREATE TABLE atomic_marker (id INTEGER PRIMARY KEY);
+            INSERT INTO atomic_marker VALUES (1);
+            SELECT patchbay_missing_migration_function();
+          `
+        )
+      ]),
+      /patchbay_missing_migration_function/
+    );
+
+    const marker = await migrationClient.query(
+      "SELECT to_regclass('atomic_marker') AS relation"
+    );
+    const ledger = await migrationClient.query(
+      "SELECT count(*)::int AS count FROM schema_migrations"
+    );
+    if (marker.rows[0].relation !== null || ledger.rows[0].count !== 0) {
+      throw new Error("Failed migration left schema changes or a ledger row behind");
+    }
+  } finally {
+    await migrationClient.end();
+    await client.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schema)} CASCADE`);
+  }
+}
+
+async function assertConcurrentMigrationsSerialize() {
+  const schema = `migration_concurrent_${suffix}`;
+  await client.query(`CREATE SCHEMA ${quoteIdentifier(schema)}`);
+  const firstClient = await createSchemaClient(schema);
+  const secondClient = await createSchemaClient(schema);
+  const migrations = [
+    smokeMigration(
+      1,
+      "concurrent",
+      `
+        CREATE TABLE concurrency_marker (id INTEGER PRIMARY KEY);
+        SELECT pg_sleep(0.25);
+        INSERT INTO concurrency_marker VALUES (1);
+      `
+    )
+  ];
+
+  try {
+    const [firstResult, secondResult] = await Promise.all([
+      migrateDatabase(firstClient, migrations),
+      migrateDatabase(secondClient, migrations)
+    ]);
+    const appliedCounts = [firstResult, secondResult]
+      .map((result) => result.applied.length)
+      .sort();
+    if (JSON.stringify(appliedCounts) !== JSON.stringify([0, 1])) {
+      throw new Error(
+        `Concurrent migrations should apply once, received ${JSON.stringify(appliedCounts)}`
+      );
+    }
+
+    const ledger = await firstClient.query(
+      "SELECT count(*)::int AS count FROM schema_migrations"
+    );
+    const markers = await firstClient.query(
+      "SELECT count(*)::int AS count FROM concurrency_marker"
+    );
+    if (ledger.rows[0].count !== 1 || markers.rows[0].count !== 1) {
+      throw new Error("Concurrent migration produced duplicate or missing state");
+    }
+  } finally {
+    await Promise.all([firstClient.end(), secondClient.end()]);
+    await client.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schema)} CASCADE`);
+  }
+}
+
+async function createSchemaClient(schema) {
+  const schemaClient = new Client({ connectionString });
+  await schemaClient.connect();
+  await schemaClient.query(`SET search_path TO ${quoteIdentifier(schema)}`);
+  return schemaClient;
+}
+
+function smokeMigration(version, name, sql) {
+  return {
+    version,
+    name,
+    filename: `${String(version).padStart(4, "0")}_${name}.sql`,
+    sql,
+    checksum: sha256(sql)
+  };
+}
+
+async function assertRejects(promise, expectedMessage) {
+  try {
+    await promise;
+  } catch (error) {
+    if (!expectedMessage.test(error.message)) {
+      throw error;
+    }
+    return;
+  }
+  throw new Error(`Expected operation to reject with ${expectedMessage}`);
+}
+
+function quoteIdentifier(identifier) {
+  return `"${identifier.replaceAll('"', '""')}"`;
 }
 
 async function seedValidGraph() {

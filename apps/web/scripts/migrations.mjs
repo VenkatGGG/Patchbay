@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 const MIGRATION_PATTERN = /^(\d+)_([a-z0-9]+(?:_[a-z0-9]+)*)\.sql$/;
 const MIGRATION_LOCK_ID = 7236849211831041n;
+const TRANSACTION_CONTROL_PATTERN =
+  /^(?:begin|start\s+transaction|commit|end(?:\s+(?:work|transaction))?|rollback|abort|savepoint|release(?:\s+savepoint)?|prepare\s+transaction|set\s+transaction)\b/i;
 
 const LEDGER_SQL = `
   CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -41,7 +43,22 @@ const LEDGER_SQL = `
 `;
 
 export function sha256(content) {
-  return createHash("sha256").update(content).digest("hex");
+  return createHash("sha256").update(canonicalizeLineEndings(content)).digest("hex");
+}
+
+export function validateMigrationSql(sql, filename = "migration") {
+  const sanitized = stripSqlCommentsAndQuotedText(sql);
+  const invalidStatement = sanitized
+    .split(";")
+    .map((statement) => statement.trim())
+    .find((statement) => TRANSACTION_CONTROL_PATTERN.test(statement));
+
+  if (invalidStatement) {
+    const keyword = invalidStatement.match(TRANSACTION_CONTROL_PATTERN)?.[0];
+    throw new Error(
+      `Migration ${filename} contains transaction control statement ${keyword}`
+    );
+  }
 }
 
 export async function discoverMigrations(directory) {
@@ -55,6 +72,9 @@ export async function discoverMigrations(directory) {
     }
 
     const match = MIGRATION_PATTERN.exec(entry.name);
+    if (!match && entry.name.toLowerCase().endsWith(".sql")) {
+      throw new Error(`Malformed migration filename ${entry.name}`);
+    }
     if (!match) {
       continue;
     }
@@ -69,6 +89,7 @@ export async function discoverMigrations(directory) {
     versions.add(version);
 
     const sql = await readFile(join(directory, entry.name), "utf8");
+    validateMigrationSql(sql, entry.name);
     migrations.push({
       version,
       name: match[2],
@@ -78,13 +99,23 @@ export async function discoverMigrations(directory) {
     });
   }
 
+  if (migrations.length === 0) {
+    throw new Error(`No migrations found in ${directory}`);
+  }
+
   return migrations.sort((left, right) => left.version - right.version);
 }
 
 export async function migrateDatabase(client, migrations) {
   let locked = false;
+  let result;
+  let migrationError;
 
   try {
+    for (const migration of migrations) {
+      validateMigrationSql(migration.sql, migration.filename);
+    }
+
     await client.query("SELECT pg_advisory_lock($1::bigint)", [
       MIGRATION_LOCK_ID.toString()
     ]);
@@ -98,52 +129,42 @@ export async function migrateDatabase(client, migrations) {
         ORDER BY version ASC
       `
     );
-    const appliedByVersion = new Map(
-      appliedResult.rows.map((row) => [Number(row.version), row])
-    );
-    const knownVersions = new Set(migrations.map(({ version }) => version));
-
-    for (const applied of appliedResult.rows) {
-      const version = Number(applied.version);
-      if (!knownVersions.has(version)) {
-        throw new Error(
-          `Applied migration version ${version} is missing from the migrations directory`
-        );
-      }
-    }
+    assertAppliedPrefix(appliedResult.rows, migrations);
 
     const appliedVersions = [];
-    for (const migration of migrations) {
-      const applied = appliedByVersion.get(migration.version);
-      if (applied) {
-        if (applied.name !== migration.name) {
-          throw new Error(
-            `Name mismatch for applied migration version ${migration.version}`
-          );
-        }
-        if (applied.checksum.trim() !== migration.checksum) {
-          throw new Error(
-            `Checksum mismatch for applied migration version ${migration.version}`
-          );
-        }
-        continue;
-      }
-
+    for (const migration of migrations.slice(appliedResult.rows.length)) {
       await applyMigration(client, migration);
       appliedVersions.push(migration.version);
     }
 
-    return {
+    result = {
       applied: appliedVersions,
       currentVersion: migrations.at(-1)?.version ?? 0
     };
-  } finally {
-    if (locked) {
+  } catch (error) {
+    migrationError = error;
+  }
+
+  if (locked) {
+    try {
       await client.query("SELECT pg_advisory_unlock($1::bigint)", [
         MIGRATION_LOCK_ID.toString()
       ]);
+    } catch (unlockError) {
+      if (migrationError) {
+        throw new AggregateError(
+          [migrationError, unlockError],
+          "Migration failed and advisory lock cleanup also failed"
+        );
+      }
+      throw unlockError;
     }
   }
+
+  if (migrationError) {
+    throw migrationError;
+  }
+  return result;
 }
 
 async function applyMigration(client, migration) {
@@ -159,7 +180,152 @@ async function applyMigration(client, migration) {
     );
     await client.query("COMMIT");
   } catch (error) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        `Migration ${migration.filename} failed and rollback also failed`
+      );
+    }
     throw error;
   }
+}
+
+function assertAppliedPrefix(appliedRows, migrations) {
+  if (appliedRows.length > migrations.length) {
+    throw new Error(
+      `Applied migrations are not an exact prefix: ledger has ${appliedRows.length} rows but only ${migrations.length} migrations exist`
+    );
+  }
+
+  for (let index = 0; index < appliedRows.length; index += 1) {
+    const applied = appliedRows[index];
+    const migration = migrations[index];
+    const appliedVersion = Number(applied.version);
+
+    if (appliedVersion !== migration.version) {
+      throw new Error(
+        `Applied migrations are not an exact prefix: expected version ${migration.version} at position ${index + 1}, found ${appliedVersion}`
+      );
+    }
+    if (applied.name !== migration.name) {
+      throw new Error(
+        `Name mismatch for applied migration version ${migration.version}`
+      );
+    }
+    if (applied.checksum.trim() !== migration.checksum) {
+      throw new Error(
+        `Checksum mismatch for applied migration version ${migration.version}`
+      );
+    }
+  }
+}
+
+function canonicalizeLineEndings(content) {
+  return content.replace(/\r\n?/g, "\n");
+}
+
+function stripSqlCommentsAndQuotedText(sql) {
+  let sanitized = "";
+  let index = 0;
+
+  while (index < sql.length) {
+    if (sql.startsWith("--", index)) {
+      index = skipLineComment(sql, index + 2);
+      sanitized += "\n";
+      continue;
+    }
+    if (sql.startsWith("/*", index)) {
+      index = skipBlockComment(sql, index + 2);
+      sanitized += " ";
+      continue;
+    }
+
+    const character = sql[index];
+    if (character === "'" || character === '"') {
+      const allowsBackslashEscapes =
+        character === "'" && isEscapeStringPrefix(sql, index);
+      index = skipQuotedText(
+        sql,
+        index + 1,
+        character,
+        allowsBackslashEscapes
+      );
+      sanitized += " ";
+      continue;
+    }
+    if (character === "$") {
+      const delimiter = readDollarQuoteDelimiter(sql, index);
+      if (delimiter) {
+        const closeIndex = sql.indexOf(delimiter, index + delimiter.length);
+        if (closeIndex === -1) {
+          throw new Error("Unterminated dollar-quoted SQL body");
+        }
+        index = closeIndex + delimiter.length;
+        sanitized += " ";
+        continue;
+      }
+    }
+
+    sanitized += character;
+    index += 1;
+  }
+
+  return sanitized;
+}
+
+function skipLineComment(sql, index) {
+  const newline = sql.indexOf("\n", index);
+  return newline === -1 ? sql.length : newline + 1;
+}
+
+function skipBlockComment(sql, index) {
+  let depth = 1;
+  while (index < sql.length && depth > 0) {
+    if (sql.startsWith("/*", index)) {
+      depth += 1;
+      index += 2;
+    } else if (sql.startsWith("*/", index)) {
+      depth -= 1;
+      index += 2;
+    } else {
+      index += 1;
+    }
+  }
+  if (depth !== 0) {
+    throw new Error("Unterminated block comment in migration SQL");
+  }
+  return index;
+}
+
+function skipQuotedText(sql, index, delimiter, allowsBackslashEscapes) {
+  while (index < sql.length) {
+    if (allowsBackslashEscapes && sql[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (sql[index] !== delimiter) {
+      index += 1;
+      continue;
+    }
+    if (sql[index + 1] === delimiter) {
+      index += 2;
+      continue;
+    }
+    return index + 1;
+  }
+  throw new Error("Unterminated quoted text in migration SQL");
+}
+
+function isEscapeStringPrefix(sql, quoteIndex) {
+  if (quoteIndex === 0 || !/[eE]/.test(sql[quoteIndex - 1])) {
+    return false;
+  }
+  return quoteIndex === 1 || !/[A-Za-z0-9_$]/.test(sql[quoteIndex - 2]);
+}
+
+function readDollarQuoteDelimiter(sql, index) {
+  const match = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(index));
+  return match?.[0] ?? null;
 }
