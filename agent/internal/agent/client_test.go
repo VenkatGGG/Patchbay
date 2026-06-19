@@ -197,6 +197,61 @@ func TestClientRejectsMalformedAgentTokenExpiry(t *testing.T) {
 	}
 }
 
+func TestClientSupportsOpenLocalEnrollmentWithoutAgentToken(t *testing.T) {
+	calls := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		calls = append(calls, request.Method+" "+request.URL.String())
+		if request.Header.Get("Authorization") != "" {
+			t.Fatalf("expected no agent authorization header, got %q", request.Header.Get("Authorization"))
+		}
+		response.Header().Set("Content-Type", "application/json")
+
+		switch request.URL.Path {
+		case "/api/agent/enroll":
+			_ = json.NewEncoder(response).Encode(protocol.EnrollResponse{
+				Agent: protocol.Agent{
+					ID:            "agt_open",
+					EnvironmentID: "env_local",
+					Name:          "open-agent",
+				},
+				Tailscale: protocol.TailscaleReply{Available: false},
+			})
+		case "/api/agent/tasks":
+			_ = json.NewEncoder(response).Encode([]protocol.Task{})
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "")
+	enrollment, err := client.Enroll(context.Background(), protocol.EnrollRequest{
+		EnvironmentID: "env_local",
+		Name:          "open-agent",
+		Version:       Version,
+		Capabilities:  []protocol.Capability{protocol.CapabilitySystemInfo},
+	})
+	if err != nil {
+		t.Fatalf("Enroll returned error: %v", err)
+	}
+	if enrollment.AgentToken != "" || enrollment.AgentTokenExpiresAt != "" {
+		t.Fatalf("expected empty agent token envelope: %+v", enrollment)
+	}
+	if _, err := client.PollTasks(context.Background(), enrollment.Agent.ID); err != nil {
+		t.Fatalf("PollTasks returned error: %v", err)
+	}
+	refreshed, err := client.RefreshAgentTokenIfNeeded(context.Background(), time.Hour)
+	if err != nil {
+		t.Fatalf("RefreshAgentTokenIfNeeded returned error: %v", err)
+	}
+	if refreshed {
+		t.Fatal("expected open local client not to refresh a token")
+	}
+	if strings.Join(calls, ",") != "POST /api/agent/enroll,GET /api/agent/tasks?agentId=agt_open" {
+		t.Fatalf("unexpected calls: %v", calls)
+	}
+}
+
 func expectBearer(t *testing.T, request *http.Request, token string) {
 	t.Helper()
 	expected := "Bearer " + token

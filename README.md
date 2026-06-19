@@ -339,6 +339,9 @@ PATCHBAY_AGENT_TOKEN_TTL_MINUTES=1440
 ```
 
 The TTL defaults to 24 hours and is capped at 7 days.
+When agent-token authentication is disabled, enrollment omits
+`agentToken`/`agentTokenExpiresAt`, agent polling and event APIs remain open, and
+the refresh endpoint reports `authRequired: false` without signing a token.
 When agent authentication is required, `PATCHBAY_AGENT_AUTH_SECRET` must be
 explicitly configured and nonempty; it never falls back to the enrollment
 secret. `/api/ready` returns HTTP 503 with `status: "not_ready"` when either

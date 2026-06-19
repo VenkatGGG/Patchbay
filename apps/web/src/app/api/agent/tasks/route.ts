@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAgentAuthorization } from "@/lib/agent-auth";
 import { domainErrorResponse } from "@/lib/api-validation";
+import { authConfigurationFailure } from "@/lib/auth-configuration";
 import { store } from "@/lib/store";
 
 export async function GET(request: NextRequest) {
@@ -9,10 +10,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "agentId is required" }, { status: 400 });
   }
 
-  const agentAuth = verifyAgentAuthorization(
-    request.headers.get("authorization"),
-    agentId
-  );
+  let agentAuth;
+  try {
+    agentAuth = verifyAgentAuthorization(
+      request.headers.get("authorization"),
+      agentId
+    );
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
   if (!agentAuth.ok) {
     return NextResponse.json({ error: agentAuth.reason }, { status: 401 });
   }

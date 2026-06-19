@@ -88,6 +88,9 @@ Minimum requirements:
 - Required enrollment and agent authentication modes must fail closed when
   their dedicated signing secret is empty; signing secrets are never shared
   across those authentication boundaries.
+- Authentication configuration is validated before enrollment persists an
+  agent or requests a Tailscale key. Public failures use a sanitized HTTP 503
+  response rather than exposing configuration names or values.
 - Use `pnpm env:local` to create the ignored `apps/web/.env.local` envelope
   with generated local signing tokens before adding real provider credentials.
 - Keep artifact retention configurable with `PATCHBAY_ARTIFACT_RETENTION_DAYS`;

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { AuthConfigurationError } from "./auth-configuration.ts";
 
 type EnrollmentTokenPayload = {
   purpose: "agent_enrollment";
@@ -31,14 +32,7 @@ export function verifyEnrollmentToken(
     return { ok: true };
   }
 
-  const secret = configuredEnrollmentSecret();
-  if (!secret) {
-    return {
-      ok: false,
-      reason:
-        "Enrollment authentication is misconfigured: PATCHBAY_ENROLLMENT_SECRET must be explicitly configured"
-    };
-  }
+  const secret = enrollmentSecret();
 
   if (!token) {
     return { ok: false, reason: "Enrollment token is required" };
@@ -95,6 +89,12 @@ export function enrollmentAuthStatus() {
   };
 }
 
+export function assertEnrollmentAuthConfigured() {
+  if (isEnrollmentTokenRequired()) {
+    enrollmentSecret();
+  }
+}
+
 export function enrollmentTokenFromAuthorization(header: string | null) {
   const match = header?.match(/^Bearer\s+([^\s]+)$/i);
   return match?.[1];
@@ -109,12 +109,7 @@ function enrollmentSecret() {
   if (secret) {
     return secret;
   }
-  if (isEnrollmentTokenRequired()) {
-    throw new Error(
-      "PATCHBAY_ENROLLMENT_SECRET must be explicitly configured when PATCHBAY_REQUIRE_ENROLLMENT_TOKEN=true"
-    );
-  }
-  return "patchbay-local-dev-secret";
+  throw new AuthConfigurationError("PATCHBAY_ENROLLMENT_SECRET");
 }
 
 function configuredEnrollmentSecret() {

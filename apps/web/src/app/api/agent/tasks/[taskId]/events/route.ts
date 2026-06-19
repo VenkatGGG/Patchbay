@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyAgentAuthorization } from "@/lib/agent-auth";
 import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
+import { authConfigurationFailure } from "@/lib/auth-configuration";
 import { store, TaskAssignmentError, TaskStatusTransitionError } from "@/lib/store";
 
 const eventSchema = z.object({
@@ -23,10 +24,19 @@ export async function POST(
   if (!parsed.ok) return parsed.response;
 
   const body = parsed.data;
-  const agentAuth = verifyAgentAuthorization(
-    request.headers.get("authorization"),
-    body.agentId
-  );
+  let agentAuth;
+  try {
+    agentAuth = verifyAgentAuthorization(
+      request.headers.get("authorization"),
+      body.agentId
+    );
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
   if (!agentAuth.ok) {
     return NextResponse.json({ error: agentAuth.reason }, { status: 401 });
   }

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { AuthConfigurationError } from "./auth-configuration.ts";
 
 type AgentTokenPayload = {
   purpose: "agent_api";
@@ -17,6 +18,10 @@ type AgentAuthOptions = {
 };
 
 export function createAgentTokenEnvelope(agentId: string, environmentId: string) {
+  if (!isAgentTokenRequired()) {
+    return {};
+  }
+
   const issuedAt = new Date();
   const expiresAt = new Date(
     issuedAt.getTime() + agentTokenTtlMinutes() * 60_000
@@ -40,19 +45,12 @@ export function verifyAgentAuthorization(
   expectedAgentId?: string,
   options: AgentAuthOptions = {}
 ): AgentAuthResult {
-  const tokenRequired = agentTokenRequired() || options.requireToken;
+  const tokenRequired = isAgentTokenRequired() || options.requireToken;
   if (!tokenRequired) {
     return { ok: true };
   }
 
-  const secret = configuredAgentSecret();
-  if (!secret) {
-    return {
-      ok: false,
-      reason:
-        "Agent authentication is misconfigured: PATCHBAY_AGENT_AUTH_SECRET must be explicitly configured"
-    };
-  }
+  const secret = agentSecret();
 
   const token = bearerToken(authorization);
   if (!token) {
@@ -83,10 +81,16 @@ export function verifyAgentAuthorization(
 
 export function agentAuthStatus() {
   return {
-    required: agentTokenRequired(),
+    required: isAgentTokenRequired(),
     secretConfigured: Boolean(configuredAgentSecret()),
     tokenTtlMinutes: agentTokenTtlMinutes()
   };
+}
+
+export function assertAgentAuthConfigured() {
+  if (isAgentTokenRequired()) {
+    agentSecret();
+  }
 }
 
 function verifyAgentToken(token: string, secret: string) {
@@ -116,7 +120,7 @@ function verifyAgentToken(token: string, secret: string) {
   }
 }
 
-function agentTokenRequired() {
+export function isAgentTokenRequired() {
   return process.env.PATCHBAY_REQUIRE_AGENT_TOKEN === "true";
 }
 
@@ -146,12 +150,7 @@ function agentSecret() {
   if (secret) {
     return secret;
   }
-  if (agentTokenRequired()) {
-    throw new Error(
-      "PATCHBAY_AGENT_AUTH_SECRET must be explicitly configured when PATCHBAY_REQUIRE_AGENT_TOKEN=true"
-    );
-  }
-  return "patchbay-local-dev-agent-secret";
+  throw new AuthConfigurationError("PATCHBAY_AGENT_AUTH_SECRET");
 }
 
 function configuredAgentSecret() {

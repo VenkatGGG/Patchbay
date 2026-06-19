@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api-validation";
-import { createEnrollmentToken } from "@/lib/enrollment-token";
+import { authConfigurationFailure } from "@/lib/auth-configuration";
+import {
+  assertEnrollmentAuthConfigured,
+  createEnrollmentToken
+} from "@/lib/enrollment-token";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
@@ -15,6 +19,16 @@ export async function POST(
 ) {
   const unauthorized = requireOperator(request);
   if (unauthorized) return unauthorized;
+
+  try {
+    assertEnrollmentAuthConfigured();
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
 
   const { environmentId } = await context.params;
   const state = await store.snapshot();
@@ -33,7 +47,16 @@ export async function POST(
   if (!parsed.ok) return parsed.response;
 
   const body = parsed.data;
-  const token = createEnrollmentToken(environmentId, body.ttlMinutes);
+  let token;
+  try {
+    token = createEnrollmentToken(environmentId, body.ttlMinutes);
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
 
   return NextResponse.json({
     token,

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createAgentTokenEnvelope } from "@/lib/agent-auth";
-import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
 import {
+  assertAgentAuthConfigured,
+  createAgentTokenEnvelope
+} from "@/lib/agent-auth";
+import { domainErrorResponse, parseJsonBody } from "@/lib/api-validation";
+import { authConfigurationFailure } from "@/lib/auth-configuration";
+import {
+  assertEnrollmentAuthConfigured,
   enrollmentTokenFromAuthorization,
   verifyEnrollmentToken
 } from "@/lib/enrollment-token";
@@ -31,14 +36,34 @@ const enrollSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  try {
+    assertEnrollmentAuthConfigured();
+    assertAgentAuthConfigured();
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
+
   const parsed = await parseJsonBody(request, enrollSchema, "Invalid enrollment request");
   if (!parsed.ok) return parsed.response;
 
   const body = parsed.data;
-  const verification = verifyEnrollmentToken(
-    enrollmentTokenFromAuthorization(request.headers.get("authorization")),
-    body.environmentId
-  );
+  let verification;
+  try {
+    verification = verifyEnrollmentToken(
+      enrollmentTokenFromAuthorization(request.headers.get("authorization")),
+      body.environmentId
+    );
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
 
   if (!verification.ok) {
     return NextResponse.json(

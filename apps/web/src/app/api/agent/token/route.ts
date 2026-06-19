@@ -1,16 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  assertAgentAuthConfigured,
   createAgentTokenEnvelope,
+  isAgentTokenRequired,
   verifyAgentAuthorization
 } from "@/lib/agent-auth";
+import { authConfigurationFailure } from "@/lib/auth-configuration";
 import { store } from "@/lib/store";
 
 export async function POST(request: NextRequest) {
-  const agentAuth = verifyAgentAuthorization(
-    request.headers.get("authorization"),
-    undefined,
-    { requireToken: true }
-  );
+  if (!isAgentTokenRequired()) {
+    return NextResponse.json({
+      authRequired: false
+    });
+  }
+
+  let agentAuth;
+  try {
+    assertAgentAuthConfigured();
+    agentAuth = verifyAgentAuthorization(
+      request.headers.get("authorization"),
+      undefined,
+      { requireToken: true }
+    );
+  } catch (error) {
+    const failure = authConfigurationFailure(error);
+    if (failure) {
+      return NextResponse.json(failure.body, { status: failure.status });
+    }
+    throw error;
+  }
   if (!agentAuth.ok) {
     return NextResponse.json({ error: agentAuth.reason }, { status: 401 });
   }

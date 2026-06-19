@@ -72,26 +72,26 @@ test("required enrollment token creation fails without an explicit secret", () =
   process.env.PATCHBAY_REQUIRE_ENROLLMENT_TOKEN = "true";
   process.env.PATCHBAY_ENROLLMENT_SECRET = "   ";
 
-  assert.throws(
-    () => enrollment.createEnrollmentToken("env_local"),
-    /PATCHBAY_ENROLLMENT_SECRET must be explicitly configured/
-  );
+  assert.throws(() => enrollment.createEnrollmentToken("env_local"), (error) => {
+    assert.equal(error.name, "AuthConfigurationError");
+    assert.equal(error.code, "AUTH_CONFIGURATION_ERROR");
+    assert.equal(error.setting, "PATCHBAY_ENROLLMENT_SECRET");
+    return true;
+  });
 });
 
-test("required enrollment verification rejects instead of using a development fallback", () => {
+test("required enrollment verification throws configuration error before credential validation", () => {
   process.env.PATCHBAY_REQUIRE_ENROLLMENT_TOKEN = "true";
   const token = createLegacyEnrollmentToken(
     "env_local",
     "patchbay-local-dev-secret"
   );
 
-  assert.deepEqual(
-    enrollment.verifyEnrollmentToken(token, "env_local"),
-    {
-      ok: false,
-      reason:
-        "Enrollment authentication is misconfigured: PATCHBAY_ENROLLMENT_SECRET must be explicitly configured"
-    }
+  assert.throws(
+    () => enrollment.verifyEnrollmentToken(token, "env_local"),
+    (error) =>
+      error.name === "AuthConfigurationError" &&
+      error.code === "AUTH_CONFIGURATION_ERROR"
   );
 });
 
@@ -125,11 +125,16 @@ test("required agent token creation fails without its explicit secret", () => {
 
   assert.throws(
     () => agent.createAgentTokenEnvelope("agent-1", "env_local"),
-    /PATCHBAY_AGENT_AUTH_SECRET must be explicitly configured/
+    (error) => {
+      assert.equal(error.name, "AuthConfigurationError");
+      assert.equal(error.code, "AUTH_CONFIGURATION_ERROR");
+      assert.equal(error.setting, "PATCHBAY_AGENT_AUTH_SECRET");
+      return true;
+    }
   );
 });
 
-test("required agent verification rejects enrollment-secret and development fallbacks", () => {
+test("required agent verification throws configuration error before credential validation", () => {
   process.env.PATCHBAY_REQUIRE_AGENT_TOKEN = "true";
   process.env.PATCHBAY_ENROLLMENT_SECRET = "enrollment-only-secret";
 
@@ -138,15 +143,23 @@ test("required agent verification rejects enrollment-secret and development fall
     "patchbay-local-dev-agent-secret"
   ]) {
     const token = createLegacyAgentToken("agent-1", "env_local", fallback);
-    assert.deepEqual(
-      agent.verifyAgentAuthorization(`Bearer ${token}`, "agent-1"),
-      {
-        ok: false,
-        reason:
-          "Agent authentication is misconfigured: PATCHBAY_AGENT_AUTH_SECRET must be explicitly configured"
-      }
+    assert.throws(
+      () => agent.verifyAgentAuthorization(`Bearer ${token}`, "agent-1"),
+      (error) =>
+        error.name === "AuthConfigurationError" &&
+        error.code === "AUTH_CONFIGURATION_ERROR"
     );
   }
+});
+
+test("disabled agent authentication does not create a signed token", () => {
+  delete process.env.PATCHBAY_REQUIRE_AGENT_TOKEN;
+  delete process.env.PATCHBAY_AGENT_AUTH_SECRET;
+
+  assert.deepEqual(
+    agent.createAgentTokenEnvelope("agent-1", "env_local"),
+    {}
+  );
 });
 
 test("configured agent tokens retain creation and verification flows", () => {

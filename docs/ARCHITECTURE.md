@@ -64,7 +64,9 @@ task polling and event ingestion. `PATCHBAY_REQUIRE_AGENT_TOKEN=true` enforces
 this post-enrollment token path; local development can leave it disabled. Agents
 must configure the corresponding enrollment or agent signing secret whenever
 that authentication mode is required. Required modes fail closed without an
-explicit nonempty secret, and blocked readiness is reported as HTTP 503. Agents
+explicit nonempty secret, and blocked readiness is reported as HTTP 503 before
+enrollment mutates state or requests a Tailscale key. Disabled agent
+authentication does not issue or refresh signed tokens. Agents
 refresh their signed API token through an authenticated agent endpoint before
 expiry. Task event ingestion also verifies the authenticated agent owns the task
 before accepting status or result updates. Task polling atomically claims queued
