@@ -85,7 +85,6 @@ async function main() {
     "Runtime Posture",
     "Readiness Checks",
     "Agent Enrollment",
-    "Mint Token",
     "Agent command",
     "PATCHBAY_ENROLLMENT_TOKEN",
     "Session Control",
@@ -221,6 +220,9 @@ function assertUiHardeningSource() {
     "Incident sessions",
     'className="table-action"',
     'label: "Retention"',
+    "readyResponse.status === 503",
+    "setRuntimeStatus(readyBody)",
+    "runtimeStatus !== null &&",
     "const enrollmentTokenAvailable =",
     "Enrollment is open",
     "No enrollment token is required"

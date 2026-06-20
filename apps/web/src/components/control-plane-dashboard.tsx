@@ -154,7 +154,7 @@ export function ControlPlaneDashboard({
       : Math.round((taskSummary.completed / selectedTasks.length) * 100);
   const onlineAgents = state.agents.filter((agent) => agent.status === "online").length;
   const enrollmentTokenAvailable =
-    runtimeStatus === null || runtimeStatus.enrollmentAuth.secretConfigured;
+    runtimeStatus !== null && runtimeStatus.enrollmentAuth.secretConfigured;
   const enrollmentOpen =
     runtimeStatus !== null && runtimeStatus.enrollmentAuth.required === false;
 
@@ -185,8 +185,11 @@ export function ControlPlaneDashboard({
     }
     try {
       const readyResponse = await fetch("/api/ready", { cache: "no-store" });
-      if (readyResponse.ok) {
-        setRuntimeStatus(await readyResponse.json());
+      const readyBody = (await readyResponse.json()) as RuntimeStatus;
+      if (readyResponse.ok || readyResponse.status === 503) {
+        setRuntimeStatus(readyBody);
+      } else {
+        throw new Error(`Readiness refresh failed with ${readyResponse.status}`);
       }
 
       const response = await fetchControlPlane("/api/state", { cache: "no-store" });
