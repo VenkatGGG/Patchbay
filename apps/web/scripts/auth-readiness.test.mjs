@@ -218,7 +218,7 @@ test("configured agent tokens retain creation and verification flows", () => {
   process.env.PATCHBAY_REQUIRE_AGENT_TOKEN = "true";
   process.env.PATCHBAY_AGENT_AUTH_SECRET = "configured-agent-secret";
 
-  const envelope = agent.createAgentTokenEnvelope("agent-1", "env_local");
+  const envelope = agent.createAgentTokenEnvelope("agent-1", "env_local", 2);
   const verification = agent.verifyAgentAuthorization(
     `Bearer ${envelope.agentToken}`,
     "agent-1"
@@ -228,6 +228,7 @@ test("configured agent tokens retain creation and verification flows", () => {
     ok: true,
     agentId: "agent-1",
     environmentId: "env_local",
+    credentialGeneration: 2,
     expiresAt: envelope.agentTokenExpiresAt
   });
 });

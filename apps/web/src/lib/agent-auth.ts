@@ -5,19 +5,30 @@ type AgentTokenPayload = {
   purpose: "agent_api";
   agentId: string;
   environmentId: string;
+  credentialGeneration: number;
   issuedAt: string;
   expiresAt: string;
 };
 
 type AgentAuthResult =
-  | { ok: true; agentId?: string; environmentId?: string; expiresAt?: string }
+  | {
+      ok: true;
+      agentId?: string;
+      environmentId?: string;
+      credentialGeneration?: number;
+      expiresAt?: string;
+    }
   | { ok: false; reason: string };
 
 type AgentAuthOptions = {
   requireToken?: boolean;
 };
 
-export function createAgentTokenEnvelope(agentId: string, environmentId: string) {
+export function createAgentTokenEnvelope(
+  agentId: string,
+  environmentId: string,
+  credentialGeneration = 0
+) {
   if (!isAgentTokenRequired()) {
     return {};
   }
@@ -30,6 +41,7 @@ export function createAgentTokenEnvelope(agentId: string, environmentId: string)
     purpose: "agent_api",
     agentId,
     environmentId,
+    credentialGeneration,
     issuedAt: issuedAt.toISOString(),
     expiresAt
   };
@@ -75,6 +87,7 @@ export function verifyAgentAuthorization(
     ok: true,
     agentId: payload.agentId,
     environmentId: payload.environmentId,
+    credentialGeneration: payload.credentialGeneration,
     expiresAt: payload.expiresAt
   };
 }
@@ -110,7 +123,8 @@ function verifyAgentToken(token: string, secret: string) {
     if (
       payload.purpose !== "agent_api" ||
       !payload.agentId ||
-      !payload.expiresAt
+      !payload.expiresAt ||
+      !Number.isInteger(payload.credentialGeneration)
     ) {
       return undefined;
     }

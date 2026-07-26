@@ -938,6 +938,7 @@ async function main() {
   const expiredToken = createSignedAgentToken({
     agentId: secondAgentResponse.body.agent.id,
     environmentId: "env_local",
+    credentialGeneration: secondAgentResponse.body.agent.credentialGeneration,
     issuedAt: new Date(Date.now() - 120_000).toISOString(),
     expiresAt: new Date(Date.now() - 60_000).toISOString()
   });
@@ -968,6 +969,42 @@ async function main() {
       }
     ),
     403
+  );
+
+  const revokeAgentResponse = await postJson(
+    `/api/agents/${secondAgentResponse.body.agent.id}/revoke`,
+    {},
+    operatorHeaders()
+  );
+  assert(revokeAgentResponse.status === 200, "expected agent revocation");
+  assert(
+    revokeAgentResponse.body.status === "offline",
+    "expected revoked agent to be offline"
+  );
+  assert(
+    revokeAgentResponse.body.credentialGeneration >
+      secondAgentResponse.body.agent.credentialGeneration,
+    "expected revocation to advance the credential generation"
+  );
+
+  await expectStatus(
+    "revoked agent token refresh is rejected",
+    postJson(
+      "/api/agent/token",
+      {},
+      {
+        Authorization: `Bearer ${refreshedAgentResponse.body.agentToken}`
+      }
+    ),
+    401
+  );
+
+  await expectStatus(
+    "revoked agent task polling is rejected",
+    getResponse(`/api/agent/tasks?agentId=${secondAgentResponse.body.agent.id}`, {
+      Authorization: `Bearer ${refreshedAgentResponse.body.agentToken}`
+    }),
+    401
   );
 
   await waitForCondition("all diagnostic tasks to complete", async () => {
@@ -1244,12 +1281,19 @@ function createSignedEnrollmentToken({ environmentId, expiresAt }) {
   return `${body}.${signature}`;
 }
 
-function createSignedAgentToken({ agentId, environmentId, issuedAt, expiresAt }) {
+function createSignedAgentToken({
+  agentId,
+  environmentId,
+  credentialGeneration = 0,
+  issuedAt,
+  expiresAt
+}) {
   const body = Buffer.from(
     JSON.stringify({
       purpose: "agent_api",
       agentId,
       environmentId,
+      credentialGeneration,
       issuedAt,
       expiresAt
     })

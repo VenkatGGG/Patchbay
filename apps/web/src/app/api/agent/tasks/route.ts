@@ -28,6 +28,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    if (agentAuth.agentId) {
+      const state = await store.snapshot();
+      const agent = state.agents.find((candidate) => candidate.id === agentAuth.agentId);
+      if (!agent) {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+      }
+      if (
+        agent.status === "offline" ||
+        agent.credentialGeneration !== agentAuth.credentialGeneration
+      ) {
+        return NextResponse.json({ error: "Agent token revoked" }, { status: 401 });
+      }
+    }
     const tasks = await store.claimTasks(agentId);
     return NextResponse.json(tasks);
   } catch (error) {

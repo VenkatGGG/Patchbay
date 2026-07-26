@@ -42,6 +42,19 @@ export async function POST(
   }
 
   try {
+    if (agentAuth.agentId) {
+      const state = await store.snapshot();
+      const agent = state.agents.find((candidate) => candidate.id === agentAuth.agentId);
+      if (!agent) {
+        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+      }
+      if (
+        agent.status === "offline" ||
+        agent.credentialGeneration !== agentAuth.credentialGeneration
+      ) {
+        return NextResponse.json({ error: "Agent token revoked" }, { status: 401 });
+      }
+    }
     const event = await store.addTaskEvent(taskId, body);
     return NextResponse.json(event, { status: 201 });
   } catch (error) {

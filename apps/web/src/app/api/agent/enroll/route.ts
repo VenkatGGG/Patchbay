@@ -126,7 +126,11 @@ export async function POST(request: NextRequest) {
     if (response) return response;
     throw error;
   }
-  const agentToken = createAgentTokenEnvelope(agent.id, agent.environmentId);
+  const agentToken = createAgentTokenEnvelope(
+    agent.id,
+    agent.environmentId,
+    agent.credentialGeneration
+  );
 
   return NextResponse.json(
     {

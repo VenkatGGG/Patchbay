@@ -39,6 +39,8 @@ export type Agent = {
   name: string;
   version: string;
   status: AgentStatus;
+  credentialGeneration: number;
+  revokedAt?: string;
   capabilities: Capability[];
   tailscale: TailscaleState;
   lastSeenAt: string;

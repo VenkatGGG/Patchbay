@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS agents (
   name TEXT NOT NULL,
   version TEXT NOT NULL,
   status TEXT NOT NULL,
+  credential_generation INTEGER NOT NULL DEFAULT 0,
+  revoked_at TIMESTAMPTZ,
   capabilities TEXT[] NOT NULL DEFAULT '{}',
   tailscale JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),

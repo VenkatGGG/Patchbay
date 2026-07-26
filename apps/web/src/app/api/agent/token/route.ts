@@ -39,10 +39,20 @@ export async function POST(request: NextRequest) {
   if (!agent || agent.environmentId !== agentAuth.environmentId) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
+  if (
+    agent.status === "offline" ||
+    agent.credentialGeneration !== agentAuth.credentialGeneration
+  ) {
+    return NextResponse.json({ error: "Agent token revoked" }, { status: 401 });
+  }
 
   return NextResponse.json({
     agentId: agent.id,
     environmentId: agent.environmentId,
-    ...createAgentTokenEnvelope(agent.id, agent.environmentId)
+    ...createAgentTokenEnvelope(
+      agent.id,
+      agent.environmentId,
+      agent.credentialGeneration
+    )
   });
 }

@@ -171,9 +171,10 @@ async function main() {
 
   for (const failureCase of failureCases) {
     fakeMode = failureCase.mode;
+    const failureTokenResponse = await mintEnrollmentToken();
     const failureResponse = await enrollAgent(
       failureCase.agentName,
-      enrollmentTokenResponse.body.token
+      failureTokenResponse.body.token
     );
     assert(
       failureResponse.status === 502,
@@ -224,6 +225,17 @@ async function enrollAgent(name, token) {
     },
     enrollmentHeaders(token)
   );
+}
+
+async function mintEnrollmentToken() {
+  const response = await postJson(
+    "/api/environments/env_local/enrollment-token",
+    { ttlMinutes: 15 },
+    operatorHeaders()
+  );
+  assert(response.status === 200, "expected enrollment token minting");
+  assert(response.body.token, "expected enrollment token");
+  return response;
 }
 
 function createFakeTailscaleApi() {

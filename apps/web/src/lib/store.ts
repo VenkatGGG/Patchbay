@@ -97,6 +97,7 @@ export type PatchbayStore = {
   createEnrollmentInvitation(input: CreateEnrollmentInvitationInput): Promise<void>;
   consumeEnrollmentInvitation(input: ConsumeEnrollmentInvitationInput): Promise<void>;
   enrollAgent(input: EnrollAgentInput): Promise<Agent>;
+  revokeAgent(agentId: string, actor?: string): Promise<Agent>;
   createSession(input: CreateSessionInput): Promise<DebugSession>;
   getSession(sessionId: string): Promise<DebugSession | undefined>;
   closeSession(sessionId: string, actor?: string): Promise<DebugSession>;
@@ -228,6 +229,7 @@ class MemoryStore implements PatchbayStore {
       name: input.name,
       version: input.version,
       status: "online",
+      credentialGeneration: 0,
       capabilities: filterReadOnlyCapabilities(input.capabilities),
       tailscale,
       lastSeenAt: enrolledAt,
@@ -240,6 +242,27 @@ class MemoryStore implements PatchbayStore {
       capabilities: agent.capabilities
     });
     return agent;
+  }
+
+  async revokeAgent(agentId: string, actor = "operator"): Promise<Agent> {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      throw new Error(`Unknown agent: ${agentId}`);
+    }
+
+    const revokedAt = now();
+    const revokedAgent: Agent = {
+      ...agent,
+      status: "offline",
+      credentialGeneration: agent.credentialGeneration + 1,
+      revokedAt
+    };
+    this.agents.set(agent.id, revokedAgent);
+    this.addAudit("agent.revoked", actor, agent.id, {
+      environmentId: agent.environmentId,
+      credentialGeneration: revokedAgent.credentialGeneration
+    });
+    return revokedAgent;
   }
 
   async createSession(input: CreateSessionInput): Promise<DebugSession> {
@@ -687,12 +710,14 @@ class PostgresStore implements PatchbayStore {
           name,
           version,
           status,
+          credential_generation,
+          revoked_at,
           capabilities,
           tailscale,
           last_seen_at,
           created_at
         )
-        VALUES ($1, $2, $3, $4, 'online', $5, $6, now(), now())
+        VALUES ($1, $2, $3, $4, 'online', 0, NULL, $5, $6, now(), now())
         RETURNING *
       `,
       [
@@ -709,6 +734,31 @@ class PostgresStore implements PatchbayStore {
     await this.addAudit("agent.enrolled", agent.id, agent.id, {
       environmentId: input.environmentId,
       capabilities: agent.capabilities
+    });
+    return agent;
+  }
+
+  async revokeAgent(agentId: string, actor = "operator"): Promise<Agent> {
+    const result = await this.pool.query(
+      `
+        UPDATE agents
+        SET
+          status = 'offline',
+          credential_generation = credential_generation + 1,
+          revoked_at = now()
+        WHERE id = $1
+        RETURNING *
+      `,
+      [agentId]
+    );
+    if (result.rows.length === 0) {
+      throw new Error(`Unknown agent: ${agentId}`);
+    }
+
+    const agent = toAgent(result.rows[0]);
+    await this.addAudit("agent.revoked", actor, agent.id, {
+      environmentId: agent.environmentId,
+      credentialGeneration: agent.credentialGeneration
     });
     return agent;
   }
@@ -1290,6 +1340,8 @@ const toAgent = (row: Record<string, unknown>): Agent => ({
   name: stringValue(row.name),
   version: stringValue(row.version),
   status: stringValue(row.status) as Agent["status"],
+  credentialGeneration: numberValue(row.credential_generation, 0),
+  revokedAt: optionalIsoValue(row.revoked_at),
   capabilities: stringArray(row.capabilities) as Capability[],
   tailscale: jsonValue<TailscaleState>(row.tailscale, {
     enabled: false,
@@ -1356,6 +1408,11 @@ const toAuditEvent = (row: Record<string, unknown>): AuditEvent => ({
 const stringValue = (value: unknown) => String(value ?? "");
 
 const stringArray = (value: unknown) => (Array.isArray(value) ? value.map(String) : []);
+
+const numberValue = (value: unknown, fallback: number) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
 
 const jsonValue = <T>(value: unknown, fallback: T): T => {
   if (value === null || value === undefined) {
