@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS task_events (
   agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   level TEXT NOT NULL,
   message TEXT NOT NULL,
+  idempotency_key TEXT,
   payload JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -89,6 +90,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_environment_id ON sessions(environment_i
 CREATE INDEX IF NOT EXISTS idx_session_tasks_session_id ON session_tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_agent_status ON session_tasks(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_task_events_session_id ON task_events(session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_events_idempotency_key
+  ON task_events(task_id, agent_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target);
 
 INSERT INTO environments (id, name, provider)

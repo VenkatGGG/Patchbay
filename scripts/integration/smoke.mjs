@@ -837,6 +837,7 @@ async function main() {
       agentId: redactionAgentResponse.body.agent.id,
       level: "info",
       message: "Synthetic redaction fixture completed",
+      idempotencyKey: "integration-redaction-completed",
       status: "completed",
       result: {
         env: syntheticEnvSecret,
@@ -856,6 +857,38 @@ async function main() {
     }
   );
   assert(redactionEventResponse.status === 201, "expected redaction fixture event");
+
+  const duplicateRedactionEventResponse = await postJson(
+    `/api/agent/tasks/${redactionTask.id}/events`,
+    {
+      agentId: redactionAgentResponse.body.agent.id,
+      level: "info",
+      message: "Synthetic redaction fixture completed",
+      idempotencyKey: "integration-redaction-completed",
+      status: "completed",
+      result: {
+        duplicated: true
+      }
+    },
+    {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }
+  );
+  assert(
+    duplicateRedactionEventResponse.status === 201,
+    "expected duplicate idempotent event retry"
+  );
+
+  const idempotentEventState = await getJson("/api/state", operatorHeaders());
+  const redactionEvents = idempotentEventState.events.filter(
+    (event) =>
+      event.taskId === redactionTask.id &&
+      event.idempotencyKey === "integration-redaction-completed"
+  );
+  assert(
+    redactionEvents.length === 1,
+    `expected one idempotent event, got ${redactionEvents.length}`
+  );
 
   await expectStatus(
     "terminal task status rewrite is rejected",

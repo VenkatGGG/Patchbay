@@ -80,6 +80,7 @@ export type TaskEvent = {
   agentId: string;
   level: TaskEventLevel;
   message: string;
+  idempotencyKey?: string;
   payload?: unknown;
   createdAt: string;
 };

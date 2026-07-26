@@ -81,10 +81,11 @@ func runPollCycle(
 	for _, task := range tasks {
 		logger.Info("running task", "task_id", task.ID, "capability", task.Capability)
 		if err := client.SendTaskEvent(ctx, task.ID, protocol.TaskEvent{
-			AgentID: agentID,
-			Level:   "info",
-			Message: "Task started",
-			Status:  "running",
+			AgentID:        agentID,
+			Level:          "info",
+			Message:        "Task started",
+			IdempotencyKey: task.ID + ":started",
+			Status:         "running",
 		}); err != nil {
 			return err
 		}
@@ -92,22 +93,24 @@ func runPollCycle(
 		result, err := registry.Execute(ctx, task.Capability, task.Params)
 		if err != nil {
 			_ = client.SendTaskEvent(ctx, task.ID, protocol.TaskEvent{
-				AgentID: agentID,
-				Level:   "error",
-				Message: "Task failed",
-				Status:  "failed",
-				Error:   err.Error(),
+				AgentID:        agentID,
+				Level:          "error",
+				Message:        "Task failed",
+				IdempotencyKey: task.ID + ":failed",
+				Status:         "failed",
+				Error:          err.Error(),
 			})
 			continue
 		}
 
 		if err := client.SendTaskEvent(ctx, task.ID, protocol.TaskEvent{
-			AgentID: agentID,
-			Level:   "info",
-			Message: "Task completed",
-			Status:  "completed",
-			Result:  result,
-			Payload: result,
+			AgentID:        agentID,
+			Level:          "info",
+			Message:        "Task completed",
+			IdempotencyKey: task.ID + ":completed",
+			Status:         "completed",
+			Result:         result,
+			Payload:        result,
 		}); err != nil {
 			return err
 		}

@@ -50,6 +50,7 @@ type AddTaskEventInput = {
   agentId: string;
   level?: TaskEventLevel;
   message: string;
+  idempotencyKey?: string;
   payload?: unknown;
   status?: TaskStatus;
   result?: unknown;
@@ -410,6 +411,10 @@ class MemoryStore implements PatchbayStore {
     if (!session) {
       throw new Error(`Unknown session: ${task.sessionId}`);
     }
+    const existingEvent = this.findTaskEventByIdempotencyKey(taskId, input);
+    if (existingEvent) {
+      return existingEvent;
+    }
     if (session.status !== "active") {
       throw new Error("Session is not active");
     }
@@ -422,6 +427,7 @@ class MemoryStore implements PatchbayStore {
       agentId: input.agentId,
       level: input.level ?? "info",
       message: input.message,
+      idempotencyKey: input.idempotencyKey,
       payload: input.payload,
       createdAt: now()
     };
@@ -429,6 +435,22 @@ class MemoryStore implements PatchbayStore {
     this.events.set(event.id, event);
     this.tasks.set(task.id, nextTaskState(task, event.createdAt, input));
     return event;
+  }
+
+  private findTaskEventByIdempotencyKey(
+    taskId: string,
+    input: AddTaskEventInput
+  ): TaskEvent | undefined {
+    if (!input.idempotencyKey) {
+      return undefined;
+    }
+
+    return [...this.events.values()].find(
+      (event) =>
+        event.taskId === taskId &&
+        event.agentId === input.agentId &&
+        event.idempotencyKey === input.idempotencyKey
+    );
   }
 
   async addSynthesis(
@@ -942,85 +964,132 @@ class PostgresStore implements PatchbayStore {
   async addTaskEvent(taskId: string, input: AddTaskEventInput): Promise<TaskEvent> {
     await this.expireSessions();
     await this.expireRunningTasks();
-    const taskResult = await this.pool.query(
-      `
-        SELECT task.*, session.status AS session_status
-        FROM session_tasks task
-        JOIN sessions session ON session.id = task.session_id
-        WHERE task.id = $1
-      `,
-      [taskId]
-    );
-    const task = taskResult.rows[0] ? toTask(taskResult.rows[0]) : undefined;
-    if (!task) {
-      throw new Error(`Unknown task: ${taskId}`);
-    }
-    ensureTaskAssignedToAgent(task, input.agentId);
-    if (taskResult.rows[0].session_status !== "active") {
-      throw new Error("Session is not active");
-    }
-    ensureTaskEventCanApply(task, input);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const taskResult = await client.query(
+        `
+          SELECT task.*, session.status AS session_status
+          FROM session_tasks task
+          JOIN sessions session ON session.id = task.session_id
+          WHERE task.id = $1
+          FOR UPDATE OF task
+        `,
+        [taskId]
+      );
+      const task = taskResult.rows[0] ? toTask(taskResult.rows[0]) : undefined;
+      if (!task) {
+        throw new Error(`Unknown task: ${taskId}`);
+      }
+      ensureTaskAssignedToAgent(task, input.agentId);
 
-    const event: TaskEvent = {
-      id: makeId("evt"),
-      taskId,
-      sessionId: task.sessionId,
-      agentId: input.agentId,
-      level: input.level ?? "info",
-      message: input.message,
-      payload: input.payload,
-      createdAt: now()
-    };
-    const nextTask = nextTaskState(task, event.createdAt, input);
-
-    await this.pool.query(
-      `
-        INSERT INTO task_events (
-          id,
-          task_id,
-          session_id,
-          agent_id,
-          level,
-          message,
-          payload,
-          created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      `,
-      [
-        event.id,
-        event.taskId,
-        event.sessionId,
-        event.agentId,
-        event.level,
-        event.message,
-        JSON.stringify(event.payload ?? null),
-        event.createdAt
-      ]
-    );
-
-    await this.pool.query(
-      `
-        UPDATE session_tasks
-        SET
-          status = $2,
-          started_at = $3,
-          completed_at = $4,
-          result = $5,
-          error = $6
-        WHERE id = $1
-      `,
-      [
+      const existingEvent = await this.findTaskEventByIdempotencyKey(
+        client,
         taskId,
-        nextTask.status,
-        nextTask.startedAt ?? null,
-        nextTask.completedAt ?? null,
-        JSON.stringify(nextTask.result ?? null),
-        nextTask.error ?? null
-      ]
-    );
+        input
+      );
+      if (existingEvent) {
+        await client.query("COMMIT");
+        return existingEvent;
+      }
 
-    return event;
+      if (taskResult.rows[0].session_status !== "active") {
+        throw new Error("Session is not active");
+      }
+      ensureTaskEventCanApply(task, input);
+
+      const event: TaskEvent = {
+        id: makeId("evt"),
+        taskId,
+        sessionId: task.sessionId,
+        agentId: input.agentId,
+        level: input.level ?? "info",
+        message: input.message,
+        idempotencyKey: input.idempotencyKey,
+        payload: input.payload,
+        createdAt: now()
+      };
+      const nextTask = nextTaskState(task, event.createdAt, input);
+
+      await client.query(
+        `
+          INSERT INTO task_events (
+            id,
+            task_id,
+            session_id,
+            agent_id,
+            level,
+            message,
+            idempotency_key,
+            payload,
+            created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          event.id,
+          event.taskId,
+          event.sessionId,
+          event.agentId,
+          event.level,
+          event.message,
+          event.idempotencyKey ?? null,
+          JSON.stringify(event.payload ?? null),
+          event.createdAt
+        ]
+      );
+
+      await client.query(
+        `
+          UPDATE session_tasks
+          SET
+            status = $2,
+            started_at = $3,
+            completed_at = $4,
+            result = $5,
+            error = $6
+          WHERE id = $1
+        `,
+        [
+          taskId,
+          nextTask.status,
+          nextTask.startedAt ?? null,
+          nextTask.completedAt ?? null,
+          JSON.stringify(nextTask.result ?? null),
+          nextTask.error ?? null
+        ]
+      );
+
+      await client.query("COMMIT");
+      return event;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async findTaskEventByIdempotencyKey(
+    client: pg.PoolClient,
+    taskId: string,
+    input: AddTaskEventInput
+  ): Promise<TaskEvent | undefined> {
+    if (!input.idempotencyKey) {
+      return undefined;
+    }
+
+    const result = await client.query(
+      `
+        SELECT *
+        FROM task_events
+        WHERE task_id = $1
+          AND agent_id = $2
+          AND idempotency_key = $3
+      `,
+      [taskId, input.agentId, input.idempotencyKey]
+    );
+    return result.rows[0] ? toTaskEvent(result.rows[0]) : undefined;
   }
 
   async addSynthesis(
@@ -1384,6 +1453,7 @@ const toTaskEvent = (row: Record<string, unknown>): TaskEvent => ({
   agentId: stringValue(row.agent_id),
   level: stringValue(row.level) as TaskEventLevel,
   message: stringValue(row.message),
+  idempotencyKey: row.idempotency_key ? stringValue(row.idempotency_key) : undefined,
   payload: row.payload ?? undefined,
   createdAt: isoValue(row.created_at)
 });

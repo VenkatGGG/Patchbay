@@ -9,6 +9,7 @@ const eventSchema = z.object({
   agentId: z.string().min(1),
   level: z.enum(["info", "warning", "error"]).default("info"),
   message: z.string().min(1),
+  idempotencyKey: z.string().min(1).max(200).optional(),
   payload: z.unknown().optional(),
   status: z.enum(["queued", "running", "completed", "failed", "denied"]).optional(),
   result: z.unknown().optional(),

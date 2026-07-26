@@ -76,11 +76,12 @@ type Task struct {
 }
 
 type TaskEvent struct {
-	AgentID string `json:"agentId"`
-	Level   string `json:"level"`
-	Message string `json:"message"`
-	Payload any    `json:"payload,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Result  any    `json:"result,omitempty"`
-	Error   string `json:"error,omitempty"`
+	AgentID        string `json:"agentId"`
+	Level          string `json:"level"`
+	Message        string `json:"message"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty"`
+	Payload        any    `json:"payload,omitempty"`
+	Status         string `json:"status,omitempty"`
+	Result         any    `json:"result,omitempty"`
+	Error          string `json:"error,omitempty"`
 }
