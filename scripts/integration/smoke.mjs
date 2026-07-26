@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -459,6 +459,37 @@ async function main() {
     "expected Tailscale tags to avoid underscores"
   );
 
+  await expectStatus(
+    "used enrollment token replay is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-replay-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(tokenResponse.body.token)
+    ),
+    401
+  );
+
+  const duplicateNameTokenResponse = await mintEnrollmentToken();
+  await expectStatus(
+    "duplicate agent name enrollment is rejected",
+    postJson(
+      "/api/agent/enroll",
+      {
+        environmentId: "env_local",
+        name: "integration-redaction-agent",
+        version: "test",
+        capabilities: ["system.info"]
+      },
+      enrollmentHeaders(duplicateNameTokenResponse.body.token)
+    ),
+    409
+  );
+
   const closeSessionResponse = await postJson(
     "/api/sessions",
     {
@@ -619,6 +650,7 @@ async function main() {
     409
   );
 
+  const goAgentTokenResponse = await mintEnrollmentToken();
   const agent = spawnProcess(
     "go",
     ["run", "./agent/cmd/patchbay-agent"],
@@ -627,7 +659,7 @@ async function main() {
       PATCHBAY_ENVIRONMENT_ID: "env_local",
       PATCHBAY_AGENT_NAME: "integration-agent",
       PATCHBAY_POLL_INTERVAL: "1s",
-      PATCHBAY_ENROLLMENT_TOKEN: tokenResponse.body.token
+      PATCHBAY_ENROLLMENT_TOKEN: goAgentTokenResponse.body.token
     }
   );
   children.push(agent);
@@ -843,6 +875,7 @@ async function main() {
     409
   );
 
+  const secondAgentTokenResponse = await mintEnrollmentToken();
   const secondAgentResponse = await postJson(
     "/api/agent/enroll",
     {
@@ -851,7 +884,7 @@ async function main() {
       version: "test",
       capabilities: ["system.info"]
     },
-    enrollmentHeaders(tokenResponse.body.token)
+    enrollmentHeaders(secondAgentTokenResponse.body.token)
   );
   assert(secondAgentResponse.status === 201, "expected secondary agent enrollment");
   assert(secondAgentResponse.body.agentToken, "expected secondary agent token");
@@ -1185,10 +1218,22 @@ function enrollmentHeaders(token) {
   };
 }
 
+async function mintEnrollmentToken() {
+  const response = await postJson(
+    "/api/environments/env_local/enrollment-token",
+    { ttlMinutes: 15 },
+    operatorHeaders()
+  );
+  assert(response.status === 200, "expected enrollment token minting");
+  assert(response.body.token, "expected minted enrollment token");
+  return response;
+}
+
 function createSignedEnrollmentToken({ environmentId, expiresAt }) {
   const body = Buffer.from(
     JSON.stringify({
       purpose: "agent_enrollment",
+      jti: `test_${randomUUID().replaceAll("-", "")}`,
       environmentId,
       expiresAt
     })

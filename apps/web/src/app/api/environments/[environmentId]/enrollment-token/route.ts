@@ -4,9 +4,10 @@ import { parseJsonBody } from "@/lib/api-validation";
 import { authConfigurationFailure } from "@/lib/auth-configuration";
 import {
   assertEnrollmentAuthConfigured,
-  createEnrollmentToken,
+  createEnrollmentTokenEnvelope,
   enrollmentTokenMintingStatus
 } from "@/lib/enrollment-token";
+import { hashEnrollmentTokenId } from "@/lib/enrollment-token";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 
@@ -59,9 +60,9 @@ export async function POST(
   if (!parsed.ok) return parsed.response;
 
   const body = parsed.data;
-  let token;
+  let envelope;
   try {
-    token = createEnrollmentToken(environmentId, body.ttlMinutes);
+    envelope = createEnrollmentTokenEnvelope(environmentId, body.ttlMinutes);
   } catch (error) {
     const failure = authConfigurationFailure(error);
     if (failure) {
@@ -70,9 +71,16 @@ export async function POST(
     throw error;
   }
 
-  return NextResponse.json({
-    token,
+  await store.createEnrollmentInvitation({
+    tokenHash: hashEnrollmentTokenId(envelope.payload.jti),
     environmentId,
-    expiresAt: new Date(Date.now() + body.ttlMinutes * 60_000).toISOString()
+    expiresAt: envelope.payload.expiresAt,
+    createdBy: "operator"
+  });
+
+  return NextResponse.json({
+    token: envelope.token,
+    environmentId,
+    expiresAt: envelope.payload.expiresAt
   });
 }

@@ -9,6 +9,7 @@ import { authConfigurationFailure } from "@/lib/auth-configuration";
 import {
   assertEnrollmentAuthConfigured,
   enrollmentTokenFromAuthorization,
+  hashEnrollmentTokenId,
   verifyEnrollmentToken
 } from "@/lib/enrollment-token";
 import {
@@ -78,6 +79,19 @@ export async function POST(request: NextRequest) {
       { error: `Unknown environment: ${body.environmentId}` },
       { status: 404 }
     );
+  }
+
+  if (verification.payload?.jti) {
+    try {
+      await store.consumeEnrollmentInvitation({
+        tokenHash: hashEnrollmentTokenId(verification.payload.jti),
+        environmentId: body.environmentId
+      });
+    } catch (error) {
+      const response = domainErrorResponse(error);
+      if (response) return response;
+      throw error;
+    }
   }
 
   let authKey: TailscaleAuthKey;

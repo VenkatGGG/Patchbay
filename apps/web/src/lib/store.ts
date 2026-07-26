@@ -26,6 +26,18 @@ type EnrollAgentInput = {
   tailscale?: Partial<TailscaleState>;
 };
 
+type CreateEnrollmentInvitationInput = {
+  tokenHash: string;
+  environmentId: string;
+  expiresAt: string;
+  createdBy: string;
+};
+
+type ConsumeEnrollmentInvitationInput = {
+  tokenHash: string;
+  environmentId: string;
+};
+
 type CreateSessionInput = {
   environmentId: string;
   name: string;
@@ -62,12 +74,28 @@ export class TaskStatusTransitionError extends Error {
   }
 }
 
+export class AgentNameConflictError extends Error {
+  constructor(environmentId: string, name: string) {
+    super(`Agent name ${name} is already enrolled in environment ${environmentId}`);
+    this.name = "AgentNameConflictError";
+  }
+}
+
+export class EnrollmentInvitationError extends Error {
+  constructor(message = "Enrollment invitation is invalid or has already been used") {
+    super(message);
+    this.name = "EnrollmentInvitationError";
+  }
+}
+
 export type PatchbayStore = {
   snapshot(): Promise<ControlPlaneState>;
   createEnvironment(
     name: string,
     provider?: Environment["provider"]
   ): Promise<Environment>;
+  createEnrollmentInvitation(input: CreateEnrollmentInvitationInput): Promise<void>;
+  consumeEnrollmentInvitation(input: ConsumeEnrollmentInvitationInput): Promise<void>;
   enrollAgent(input: EnrollAgentInput): Promise<Agent>;
   createSession(input: CreateSessionInput): Promise<DebugSession>;
   getSession(sessionId: string): Promise<DebugSession | undefined>;
@@ -100,6 +128,10 @@ class MemoryStore implements PatchbayStore {
   private events = new Map<string, TaskEvent>();
   private syntheses = new Map<string, Synthesis>();
   private audit = new Map<string, AuditEvent>();
+  private enrollmentInvitations = new Map<
+    string,
+    CreateEnrollmentInvitationInput & { consumedAt?: string }
+  >();
 
   constructor() {
     const localEnvironment: Environment = {
@@ -146,6 +178,34 @@ class MemoryStore implements PatchbayStore {
     return environment;
   }
 
+  async createEnrollmentInvitation(input: CreateEnrollmentInvitationInput): Promise<void> {
+    const environment = this.environments.get(input.environmentId);
+    if (!environment) {
+      throw new Error(`Unknown environment: ${input.environmentId}`);
+    }
+
+    this.enrollmentInvitations.set(input.tokenHash, input);
+    this.addAudit("enrollment.invitation.created", input.createdBy, input.environmentId, {
+      expiresAt: input.expiresAt
+    });
+  }
+
+  async consumeEnrollmentInvitation(input: ConsumeEnrollmentInvitationInput): Promise<void> {
+    const invitation = this.enrollmentInvitations.get(input.tokenHash);
+    if (
+      !invitation ||
+      invitation.environmentId !== input.environmentId ||
+      invitation.consumedAt ||
+      Date.parse(invitation.expiresAt) <= Date.now()
+    ) {
+      throw new EnrollmentInvitationError();
+    }
+
+    invitation.consumedAt = now();
+    this.enrollmentInvitations.set(input.tokenHash, invitation);
+    this.addAudit("enrollment.invitation.consumed", "agent", input.environmentId, {});
+  }
+
   async enrollAgent(input: EnrollAgentInput): Promise<Agent> {
     const environment = this.environments.get(input.environmentId);
     if (!environment) {
@@ -156,11 +216,14 @@ class MemoryStore implements PatchbayStore {
       (agent) =>
         agent.environmentId === input.environmentId && agent.name === input.name
     );
+    if (existing) {
+      throw new AgentNameConflictError(input.environmentId, input.name);
+    }
 
     const enrolledAt = now();
     const tailscale = normalizeTailscale(input.tailscale);
     const agent: Agent = {
-      id: existing?.id ?? makeId("agt"),
+      id: makeId("agt"),
       environmentId: input.environmentId,
       name: input.name,
       version: input.version,
@@ -168,11 +231,11 @@ class MemoryStore implements PatchbayStore {
       capabilities: filterReadOnlyCapabilities(input.capabilities),
       tailscale,
       lastSeenAt: enrolledAt,
-      createdAt: existing?.createdAt ?? enrolledAt
+      createdAt: enrolledAt
     };
 
     this.agents.set(agent.id, agent);
-    this.addAudit(existing ? "agent.updated" : "agent.enrolled", agent.id, agent.id, {
+    this.addAudit("agent.enrolled", agent.id, agent.id, {
       environmentId: input.environmentId,
       capabilities: agent.capabilities
     });
@@ -540,13 +603,79 @@ class PostgresStore implements PatchbayStore {
     return toEnvironment(result.rows[0]);
   }
 
+  async createEnrollmentInvitation(input: CreateEnrollmentInvitationInput): Promise<void> {
+    await this.ensureEnvironment(input.environmentId);
+    await this.pool.query(
+      `
+        INSERT INTO enrollment_invitations (
+          token_hash,
+          environment_id,
+          expires_at,
+          created_by
+        )
+        VALUES ($1, $2, $3, $4)
+      `,
+      [input.tokenHash, input.environmentId, input.expiresAt, input.createdBy]
+    );
+    await this.addAudit("enrollment.invitation.created", input.createdBy, input.environmentId, {
+      expiresAt: input.expiresAt
+    });
+  }
+
+  async consumeEnrollmentInvitation(input: ConsumeEnrollmentInvitationInput): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `
+          SELECT token_hash, environment_id, expires_at, consumed_at
+          FROM enrollment_invitations
+          WHERE token_hash = $1
+          FOR UPDATE
+        `,
+        [input.tokenHash]
+      );
+      const invitation = result.rows[0];
+      if (
+        !invitation ||
+        stringValue(invitation.environment_id) !== input.environmentId ||
+        invitation.consumed_at ||
+        Date.parse(isoValue(invitation.expires_at)) <= Date.now()
+      ) {
+        throw new EnrollmentInvitationError();
+      }
+
+      await client.query(
+        "UPDATE enrollment_invitations SET consumed_at = now() WHERE token_hash = $1",
+        [input.tokenHash]
+      );
+      await client.query(
+        `
+          INSERT INTO audit_log (id, action, actor, target, metadata)
+          VALUES ($1, 'enrollment.invitation.consumed', 'agent', $2, '{}'::jsonb)
+        `,
+        [makeId("aud"), input.environmentId]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async enrollAgent(input: EnrollAgentInput): Promise<Agent> {
     await this.ensureEnvironment(input.environmentId);
     const existing = await this.pool.query(
       "SELECT * FROM agents WHERE environment_id = $1 AND name = $2",
       [input.environmentId, input.name]
     );
-    const id = existing.rows[0]?.id ?? makeId("agt");
+    if (existing.rows.length > 0) {
+      throw new AgentNameConflictError(input.environmentId, input.name);
+    }
+
+    const id = makeId("agt");
     const tailscale = normalizeTailscale(input.tailscale);
     const capabilities = filterReadOnlyCapabilities(input.capabilities);
 
@@ -564,13 +693,6 @@ class PostgresStore implements PatchbayStore {
           created_at
         )
         VALUES ($1, $2, $3, $4, 'online', $5, $6, now(), now())
-        ON CONFLICT (environment_id, name)
-        DO UPDATE SET
-          version = EXCLUDED.version,
-          status = 'online',
-          capabilities = EXCLUDED.capabilities,
-          tailscale = EXCLUDED.tailscale,
-          last_seen_at = now()
         RETURNING *
       `,
       [
@@ -584,15 +706,10 @@ class PostgresStore implements PatchbayStore {
     );
 
     const agent = toAgent(result.rows[0]);
-    await this.addAudit(
-      existing.rows.length > 0 ? "agent.updated" : "agent.enrolled",
-      agent.id,
-      agent.id,
-      {
-        environmentId: input.environmentId,
-        capabilities: agent.capabilities
-      }
-    );
+    await this.addAudit("agent.enrolled", agent.id, agent.id, {
+      environmentId: input.environmentId,
+      capabilities: agent.capabilities
+    });
     return agent;
   }
 

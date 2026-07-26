@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 const expectedTables = [
   "agents",
   "audit_log",
+  "enrollment_invitations",
   "environments",
   "session_tasks",
   "sessions",

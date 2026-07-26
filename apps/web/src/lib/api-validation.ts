@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { AgentNameConflictError, EnrollmentInvitationError } from "./store";
 
 const DEFAULT_MAX_JSON_BODY_BYTES = 1024 * 1024;
 const MAX_CONFIGURABLE_JSON_BODY_BYTES = 10 * 1024 * 1024;
@@ -115,6 +116,14 @@ export function domainErrorResponse(error: unknown) {
 
   if (error.message === "Session is not active") {
     return NextResponse.json({ error: error.message }, { status: 409 });
+  }
+
+  if (error instanceof AgentNameConflictError) {
+    return NextResponse.json({ error: error.message }, { status: 409 });
+  }
+
+  if (error instanceof EnrollmentInvitationError) {
+    return NextResponse.json({ error: error.message }, { status: 401 });
   }
 
   return undefined;

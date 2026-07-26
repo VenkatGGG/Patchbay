@@ -14,7 +14,7 @@ export type EnrollmentTokenVerification = {
   payload?: EnrollmentTokenPayload;
 };
 
-export function createEnrollmentToken(environmentId: string, ttlMinutes = 60) {
+export function createEnrollmentTokenEnvelope(environmentId: string, ttlMinutes = 60) {
   const payload: EnrollmentTokenPayload = {
     purpose: "agent_enrollment",
     jti: randomBytes(24).toString("base64url"),
@@ -23,7 +23,14 @@ export function createEnrollmentToken(environmentId: string, ttlMinutes = 60) {
   };
   const body = base64UrlEncode(JSON.stringify(payload));
   const signature = sign(body);
-  return `${body}.${signature}`;
+  return {
+    token: `${body}.${signature}`,
+    payload
+  };
+}
+
+export function createEnrollmentToken(environmentId: string, ttlMinutes = 60) {
+  return createEnrollmentTokenEnvelope(environmentId, ttlMinutes).token;
 }
 
 export function verifyEnrollmentToken(

@@ -18,6 +18,15 @@ CREATE TABLE IF NOT EXISTS agents (
   UNIQUE(environment_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS enrollment_invitations (
+  token_hash TEXT PRIMARY KEY,
+  environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
@@ -73,6 +82,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_agents_environment_id ON agents(environment_id);
+CREATE INDEX IF NOT EXISTS idx_enrollment_invitations_environment ON enrollment_invitations(environment_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_environment_id ON sessions(environment_id);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_session_id ON session_tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_agent_status ON session_tasks(agent_id, status);
