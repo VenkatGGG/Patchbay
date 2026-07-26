@@ -104,6 +104,29 @@ test("configured enrollment tokens retain their valid verification flow", () => 
 
   assert.equal(verification.ok, true);
   assert.equal(verification.payload?.environmentId, "env_local");
+  assert.match(verification.payload?.jti ?? "", /^[A-Za-z0-9_-]{20,}$/);
+});
+
+test("enrollment tokens receive unique invitation identifiers", () => {
+  process.env.PATCHBAY_REQUIRE_ENROLLMENT_TOKEN = "true";
+  process.env.PATCHBAY_ENROLLMENT_SECRET = "configured-enrollment-secret";
+
+  const first = enrollment.verifyEnrollmentToken(
+    enrollment.createEnrollmentToken("env_local"),
+    "env_local"
+  );
+  const second = enrollment.verifyEnrollmentToken(
+    enrollment.createEnrollmentToken("env_local"),
+    "env_local"
+  );
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.notEqual(first.payload?.jti, second.payload?.jti);
+  assert.notEqual(
+    enrollment.hashEnrollmentTokenId(first.payload?.jti ?? ""),
+    first.payload?.jti
+  );
 });
 
 test("optional enrollment authentication can mint with an explicit secret", () => {

@@ -1,8 +1,9 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { AuthConfigurationError } from "./auth-configuration.ts";
 
 type EnrollmentTokenPayload = {
   purpose: "agent_enrollment";
+  jti: string;
   environmentId: string;
   expiresAt: string;
 };
@@ -16,6 +17,7 @@ export type EnrollmentTokenVerification = {
 export function createEnrollmentToken(environmentId: string, ttlMinutes = 60) {
   const payload: EnrollmentTokenPayload = {
     purpose: "agent_enrollment",
+    jti: randomBytes(24).toString("base64url"),
     environmentId,
     expiresAt: new Date(Date.now() + ttlMinutes * 60_000).toISOString()
   };
@@ -62,6 +64,10 @@ export function verifyEnrollmentToken(
     return { ok: false, reason: "Enrollment token has the wrong purpose" };
   }
 
+  if (!payload.jti || payload.jti.length < 20) {
+    return { ok: false, reason: "Enrollment token invitation is invalid" };
+  }
+
   if (payload.environmentId !== environmentId) {
     return { ok: false, reason: "Enrollment token is for another environment" };
   }
@@ -76,6 +82,10 @@ export function verifyEnrollmentToken(
   }
 
   return { ok: true, payload };
+}
+
+export function hashEnrollmentTokenId(jti: string) {
+  return createHash("sha256").update(jti, "utf8").digest("hex");
 }
 
 export function isEnrollmentTokenRequired() {
