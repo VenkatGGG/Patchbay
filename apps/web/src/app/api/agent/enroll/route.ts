@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
         ...body.tailscale,
         enabled: body.tailscale?.enabled ?? authKey.available,
         tags: body.tailscale?.tags ?? authKey.tags,
+        authKeyId: authKey.id,
         authKeyPreview: authKey.preview
       }
     });

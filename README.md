@@ -214,6 +214,12 @@ By default Patchbay requests `tag:patchbay-agent` and
 set `TAILSCALE_AUTH_KEY_TAGS` to the comma-separated tag list allowed for that
 client before running the live smoke test.
 
+Tailscale API calls are bounded by `TAILSCALE_TIMEOUT_MS` (default `10000`,
+maximum `60000`). Explicitly revoking an agent also revokes the short-lived
+Tailscale auth key when the control plane has a configured OAuth client. If the
+Tailscale API is unavailable, Patchbay still invalidates the local agent token
+and records the cleanup failure for recovery.
+
 `pnpm test:tailscale:fake` runs in `pnpm check` and exercises the same
 enrollment path against a local fake Tailscale API using `TAILSCALE_API_BASE_URL`.
 

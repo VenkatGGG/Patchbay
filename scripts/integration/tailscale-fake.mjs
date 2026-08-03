@@ -94,12 +94,38 @@ async function main() {
     agentResponse.body.agent.tailscale.enabled === true,
     "expected enrolled agent to record Tailscale enabled"
   );
+  assert(
+    agentResponse.body.agent.tailscale.authKeyId === authKeyId,
+    "expected enrolled agent to retain the non-secret auth key id"
+  );
 
   const stateResponse = await getResponse("/api/state", operatorHeaders());
   assert(stateResponse.status === 200, "expected state response");
   const stateJson = JSON.stringify(stateResponse.body);
   assert(!stateJson.includes(authKey), "expected state not to expose raw auth key");
   assert(stateJson.includes("tskey-au...7890"), "expected state to include only auth key preview");
+
+  const revokeResponse = await postJson(
+    `/api/agents/${agentResponse.body.agent.id}/revoke`,
+    {},
+    operatorHeaders()
+  );
+  assert(revokeResponse.status === 200, "expected agent revocation");
+  assert(revokeResponse.body.status === "offline", "expected revoked agent offline");
+  assert(
+    revokeResponse.body.tailscaleLifecycle.status === "revoked",
+    "expected Tailscale auth key revocation"
+  );
+  const revokeRequest = requests.find(
+    (request) =>
+      request.method === "DELETE" &&
+      request.path === `/api/v2/tailnet/${tailnet}/keys/${authKeyId}`
+  );
+  assert(revokeRequest, "expected Tailscale auth key delete request");
+  assert(
+    revokeRequest.headers.authorization === `Bearer ${accessToken}`,
+    "expected bearer token on auth key delete request"
+  );
 
   const oauthRequest = requests.find((request) => request.path === "/api/v2/oauth/token");
   assert(oauthRequest, "expected OAuth token request");
@@ -125,6 +151,30 @@ async function main() {
   assert(keyBody.capabilities.devices.create.ephemeral === true, "expected ephemeral key");
   assert(keyBody.capabilities.devices.create.preauthorized === true, "expected preauthorized key");
   assertTags(keyBody.capabilities.devices.create.tags, authKeyTags, "auth key request");
+
+  fakeMode = "revoke-status-error";
+  const failedRevokeToken = await mintEnrollmentToken();
+  const failedRevokeAgent = await enrollAgent(
+    "fake-tailscale-revoke-failure-agent",
+    failedRevokeToken.body.token
+  );
+  assert(failedRevokeAgent.status === 201, "expected revoke failure agent enrollment");
+  const failedRevokeResponse = await postJson(
+    `/api/agents/${failedRevokeAgent.body.agent.id}/revoke`,
+    {},
+    operatorHeaders()
+  );
+  assert(failedRevokeResponse.status === 200, "expected local revocation despite Tailscale outage");
+  assert(failedRevokeResponse.body.status === "offline", "expected local revoke to fail closed");
+  assert(
+    failedRevokeResponse.body.tailscaleLifecycle.status === "failed",
+    "expected Tailscale cleanup failure to be reported"
+  );
+  assert(
+    failedRevokeResponse.body.tailscaleLifecycle.detail ===
+      "Tailscale auth key revocation request failed: 503 (temporary fake revoke outage)",
+    "expected sanitized Tailscale cleanup failure detail"
+  );
 
   const failureCases = [
     {
@@ -314,6 +364,22 @@ function createFakeTailscaleApi() {
         id: authKeyId,
         key: authKey
       });
+      return;
+    }
+
+    if (
+      request.method === "DELETE" &&
+      request.url === `/api/v2/tailnet/${tailnet}/keys/${authKeyId}`
+    ) {
+      if (fakeMode === "revoke-status-error") {
+        jsonResponse(response, 503, {
+          error: "temporary fake revoke outage"
+        });
+        return;
+      }
+
+      response.writeHead(204);
+      response.end();
       return;
     }
 

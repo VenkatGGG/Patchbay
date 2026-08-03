@@ -54,6 +54,7 @@ export type TailscaleState = {
   nodeId?: string;
   hostname?: string;
   tags: string[];
+  authKeyId?: string;
   authKeyPreview?: string;
 };
 

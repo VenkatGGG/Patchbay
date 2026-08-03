@@ -9,6 +9,11 @@ export type TailscaleAuthKey = {
   expiresAt?: string;
 };
 
+export type TailscaleRevocation = {
+  attempted: boolean;
+  status: "revoked" | "not_configured" | "missing_key_id";
+};
+
 type TailscaleOAuthToken = {
   access_token: string;
   token_type: string;
@@ -38,33 +43,11 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
     };
   }
 
-  const tokenResponse = await tailscaleFetch(
-    tailscaleApiUrl(apiBaseUrl, "/api/v2/oauth/token"),
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret
-      })
-    },
-    "token"
+  const accessToken = await requestTailscaleAccessToken(
+    apiBaseUrl,
+    clientId,
+    clientSecret
   );
-
-  if (!tokenResponse.ok) {
-    throw new TailscaleIntegrationError(
-      await tailscaleRequestFailure("token", tokenResponse)
-    );
-  }
-
-  const token = await tailscaleJson<TailscaleOAuthToken>(tokenResponse, "token");
-  if (!token.access_token) {
-    throw new TailscaleIntegrationError(
-      "Tailscale token response did not include access_token"
-    );
-  }
 
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
   const keyResponse = await tailscaleFetch(
@@ -72,7 +55,7 @@ export async function createAgentAuthKey(environmentId: string): Promise<Tailsca
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token.access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
@@ -138,6 +121,42 @@ export function tailscaleRuntimeStatus() {
   };
 }
 
+export async function revokeAgentAuthKey(
+  authKeyId?: string
+): Promise<TailscaleRevocation> {
+  const { apiBaseUrl, tailnet, clientId, clientSecret } = tailscaleConfig();
+  if (!tailnet || !clientId || !clientSecret) {
+    return { attempted: false, status: "not_configured" };
+  }
+  if (!authKeyId) {
+    return { attempted: false, status: "missing_key_id" };
+  }
+
+  const accessToken = await requestTailscaleAccessToken(
+    apiBaseUrl,
+    clientId,
+    clientSecret
+  );
+  const response = await tailscaleFetch(
+    tailscaleApiUrl(
+      apiBaseUrl,
+      `/api/v2/tailnet/${encodeURIComponent(tailnet)}/keys/${encodeURIComponent(authKeyId)}`
+    ),
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` }
+    },
+    "auth key revocation"
+  );
+  if (!response.ok) {
+    throw new TailscaleIntegrationError(
+      await tailscaleRequestFailure("auth key revocation", response)
+    );
+  }
+
+  return { attempted: true, status: "revoked" };
+}
+
 function tailscaleConfig() {
   return {
     apiBaseUrl: (
@@ -180,13 +199,65 @@ async function tailscaleFetch(
   init: RequestInit,
   label: string
 ): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), tailscaleTimeoutMs());
   try {
-    return await fetch(url, init);
-  } catch {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new TailscaleIntegrationError(
+        `Tailscale ${label} request timed out`
+      );
+    }
     throw new TailscaleIntegrationError(
       `Tailscale ${label} request failed before response`
     );
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+async function requestTailscaleAccessToken(
+  apiBaseUrl: string,
+  clientId: string,
+  clientSecret: string
+) {
+  const tokenResponse = await tailscaleFetch(
+    tailscaleApiUrl(apiBaseUrl, "/api/v2/oauth/token"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret
+      })
+    },
+    "token"
+  );
+
+  if (!tokenResponse.ok) {
+    throw new TailscaleIntegrationError(
+      await tailscaleRequestFailure("token", tokenResponse)
+    );
+  }
+
+  const token = await tailscaleJson<TailscaleOAuthToken>(tokenResponse, "token");
+  if (!token.access_token) {
+    throw new TailscaleIntegrationError(
+      "Tailscale token response did not include access_token"
+    );
+  }
+
+  return token.access_token;
+}
+
+function tailscaleTimeoutMs() {
+  const configured = Number(process.env.TAILSCALE_TIMEOUT_MS);
+  return Number.isInteger(configured) && configured > 0
+    ? Math.min(configured, 60_000)
+    : 10_000;
 }
 
 async function tailscaleJson<T>(response: Response, label: string): Promise<T> {

@@ -118,6 +118,12 @@ export type PatchbayStore = {
   consumeEnrollmentInvitation(input: ConsumeEnrollmentInvitationInput): Promise<void>;
   enrollAgent(input: EnrollAgentInput): Promise<Agent>;
   revokeAgent(agentId: string, actor?: string): Promise<Agent>;
+  recordAudit(
+    action: string,
+    actor: string,
+    target: string,
+    metadata: Record<string, unknown>
+  ): Promise<void>;
   createSession(input: CreateSessionInput): Promise<DebugSession>;
   getSession(sessionId: string): Promise<DebugSession | undefined>;
   createInvestigation(input: CreateInvestigationInput): Promise<{
@@ -303,6 +309,15 @@ class MemoryStore implements PatchbayStore {
       credentialGeneration: revokedAgent.credentialGeneration
     });
     return revokedAgent;
+  }
+
+  async recordAudit(
+    action: string,
+    actor: string,
+    target: string,
+    metadata: Record<string, unknown>
+  ) {
+    this.addAudit(action, actor, target, metadata);
   }
 
   async createSession(input: CreateSessionInput): Promise<DebugSession> {
@@ -1105,6 +1120,15 @@ class PostgresStore implements PatchbayStore {
       credentialGeneration: agent.credentialGeneration
     });
     return agent;
+  }
+
+  async recordAudit(
+    action: string,
+    actor: string,
+    target: string,
+    metadata: Record<string, unknown>
+  ) {
+    await this.addAudit(action, actor, target, metadata);
   }
 
   async createSession(input: CreateSessionInput): Promise<DebugSession> {
@@ -2158,6 +2182,7 @@ const normalizeTailscale = (tailscale?: Partial<TailscaleState>): TailscaleState
   nodeId: tailscale?.nodeId,
   hostname: tailscale?.hostname,
   tags: tailscale?.tags ?? ["tag:patchbay-agent"],
+  authKeyId: tailscale?.authKeyId,
   authKeyPreview: tailscale?.authKeyPreview
 });
 
