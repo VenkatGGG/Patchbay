@@ -22,6 +22,7 @@
     "test:schema": "node scripts/checks/schema-constraints.mjs",
     "test:migrations": "pnpm --filter @patchbay/web test:migrations",
     "test:auth-readiness": "pnpm --filter @patchbay/web test:auth-readiness",
+    "test:investigation-plan": "pnpm --filter @patchbay/web test:investigation-plan",
     "test:auth-readiness:integration": "node scripts/integration/auth-readiness.mjs",
     "test:auth-misconfiguration": "node scripts/integration/auth-misconfiguration.mjs",
     "test:ui": "node scripts/integration/ui-smoke.mjs",

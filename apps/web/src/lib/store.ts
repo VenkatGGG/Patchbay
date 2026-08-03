@@ -1,4 +1,5 @@
 import pg from "pg";
+import { defaultCapabilityParams } from "./investigation-plan";
 import { artifactRetentionCutoffMs } from "./retention";
 import {
   Agent,
@@ -1388,7 +1389,7 @@ const createDiagnosticTasks = (sessionId: string) => {
     id: makeId("task"),
     sessionId,
     capability,
-    params: paramsFor(capability),
+    params: defaultCapabilityParams(capability),
     status: "queued" as const,
     createdAt: now()
   }));
@@ -1467,39 +1468,6 @@ const leaseExpiry = (from: string) =>
 
 const taskTimeoutMessage = (timeoutSeconds: number) =>
   `Task timed out after ${timeoutSeconds} seconds`;
-
-const paramsFor = (capability: Capability): Record<string, unknown> => {
-  switch (capability) {
-    case "logs.search":
-      return {
-        pattern: "timeout|latency|connection|pool|error",
-        paths: []
-      };
-    case "cloud.metadata":
-      return {
-        timeoutMs: 800
-      };
-    case "process.list":
-      return {
-        limit: 40
-      };
-    case "network.connections":
-      return {
-        limit: 60
-      };
-    case "docker.containers":
-      return {
-        limit: 60
-      };
-    case "kubernetes.resources":
-      return {
-        namespaces: "all",
-        limit: 80
-      };
-    default:
-      return {};
-  }
-};
 
 const filterReadOnlyCapabilities = (capabilities: Capability[]) =>
   capabilities.filter((capability) => READ_ONLY_CAPABILITIES.includes(capability));

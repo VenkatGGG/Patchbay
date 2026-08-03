@@ -8,6 +8,7 @@
     "start": "next start",
     "db:migrate": "node scripts/migrate-db.mjs",
     "test:auth-readiness": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/auth-readiness.test.mjs",
+    "test:investigation-plan": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/investigation-plan.test.ts",
     "test:migrations": "node --test scripts/migrations.test.mjs",
     "typecheck": "tsc --noEmit"
   },
