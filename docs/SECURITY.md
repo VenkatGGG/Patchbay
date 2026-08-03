@@ -33,6 +33,12 @@ Network layer:
 - Tagged machine identities.
 - No public inbound agent port.
 - Short-lived auth keys where possible.
+- Explicit agent revocation also attempts to delete the associated Tailscale
+  auth key; cleanup failures are recorded without delaying local credential
+  invalidation.
+- Tailscale device removal remains an operator recovery action because deleting
+  a bootstrap auth key does not necessarily disconnect an already-enrolled
+  ephemeral node immediately.
 
 Control plane:
 
@@ -85,6 +91,9 @@ Minimum requirements:
 - Keep `GEMINI_API_KEY`, `PATCHBAY_OPERATOR_TOKEN`,
   `PATCHBAY_ENROLLMENT_SECRET`, and `PATCHBAY_AGENT_AUTH_SECRET` in ignored local
   or deployment secret stores.
+- Keep `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, and
+  `TAILSCALE_TAILNET` in the same protected secret/configuration store. The
+  OAuth client should be restricted to the minimum Patchbay tag permissions.
 - Required enrollment and agent authentication modes must fail closed when
   their dedicated signing secret is empty; signing secrets are never shared
   across those authentication boundaries.
@@ -107,3 +116,8 @@ Initial redaction targets:
 - Bearer tokens
 - Kubernetes service account tokens
 - Private key blocks
+
+Operational recovery procedures are documented in
+[`docs/RECOVERY.md`](./RECOVERY.md). In particular, revoke a lost agent at the
+Patchbay boundary first, then remove its Tailscale device if it remains
+connected.

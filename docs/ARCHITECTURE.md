@@ -157,9 +157,13 @@ network every time.
 Target model:
 
 1. User configures Tailscale OAuth credentials in the self-hosted control plane.
-2. Patchbay creates tagged, short-lived auth keys for agents.
-3. Agents join with session or environment-scoped identity.
-4. Patchbay tears down access after the session or environment expires.
+2. Patchbay creates tagged, preauthorized, short-lived, non-reusable auth keys
+   for agent enrollment.
+3. Agents join with environment-scoped identity and report the non-secret key
+   identity back to the control plane.
+4. Explicit agent revocation invalidates the Patchbay credential and attempts
+   to delete the associated Tailscale auth key. An operator removes an already
+   connected device separately when immediate network isolation is required.
 
 Tags should distinguish agents, environments, and future coordinators:
 

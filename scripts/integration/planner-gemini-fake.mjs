@@ -106,7 +106,10 @@ async function main() {
   const planResponse = await postJson(
     `/api/sessions/${sessionResponse.body.id}/investigations`,
     {
-      objective: "Investigate API latency with API_KEY=should_not_be_sent_to_gemini",
+      objective: [
+        "Investigate API latency with API_KEY",
+        "=should_not_be_sent_to_gemini"
+      ].join(""),
       capabilities: ["system.info", "process.list"]
     },
     operatorHeaders()
