@@ -62,6 +62,7 @@ type Agent struct {
 	Capabilities  []Capability   `json:"capabilities"`
 	Tailscale     TailscaleState `json:"tailscale"`
 	LastSeenAt    string         `json:"lastSeenAt"`
+	LeaseExpiresAt string         `json:"leaseExpiresAt"`
 	CreatedAt     string         `json:"createdAt"`
 }
 

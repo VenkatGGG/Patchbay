@@ -44,6 +44,7 @@ export type Agent = {
   capabilities: Capability[];
   tailscale: TailscaleState;
   lastSeenAt: string;
+  leaseExpiresAt: string;
   createdAt: string;
 };
 

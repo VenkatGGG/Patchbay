@@ -151,6 +151,7 @@ class MemoryStore implements PatchbayStore {
   async snapshot(): Promise<ControlPlaneState> {
     this.expireSessions();
     this.expireRunningTasks();
+    this.expireStaleAgents();
     this.applyArtifactRetention();
 
     return {
@@ -234,6 +235,7 @@ class MemoryStore implements PatchbayStore {
       capabilities: filterReadOnlyCapabilities(input.capabilities),
       tailscale,
       lastSeenAt: enrolledAt,
+      leaseExpiresAt: leaseExpiry(enrolledAt),
       createdAt: enrolledAt
     };
 
@@ -360,6 +362,7 @@ class MemoryStore implements PatchbayStore {
   async claimTasks(agentId: string): Promise<DiagnosticTask[]> {
     this.expireSessions();
     this.expireRunningTasks();
+    this.expireStaleAgents();
     const agent = this.agents.get(agentId);
     if (!agent) {
       throw new Error(`Unknown agent: ${agentId}`);
@@ -369,7 +372,8 @@ class MemoryStore implements PatchbayStore {
     this.agents.set(agent.id, {
       ...agent,
       status: "online",
-      lastSeenAt: heartbeatAt
+      lastSeenAt: heartbeatAt,
+      leaseExpiresAt: leaseExpiry(heartbeatAt)
     });
 
     const claimedAt = now();
@@ -500,6 +504,26 @@ class MemoryStore implements PatchbayStore {
     }
   }
 
+  private expireStaleAgents() {
+    const currentTime = Date.now();
+    for (const agent of this.agents.values()) {
+      if (
+        agent.revokedAt ||
+        agent.status === "offline" ||
+        Date.parse(agent.leaseExpiresAt) > currentTime
+      ) {
+        continue;
+      }
+
+      this.agents.set(agent.id, { ...agent, status: "offline" });
+      this.addAudit("agent.lease.expired", "system", agent.id, {
+        environmentId: agent.environmentId,
+        lastSeenAt: agent.lastSeenAt,
+        leaseExpiresAt: agent.leaseExpiresAt
+      });
+    }
+  }
+
   private expireRunningTasks() {
     const timeoutSeconds = taskTimeoutSeconds();
     const deadline = Date.now() - timeoutSeconds * 1000;
@@ -599,6 +623,7 @@ class PostgresStore implements PatchbayStore {
 
   async snapshot(): Promise<ControlPlaneState> {
     await this.ensureDefaultEnvironment();
+    await this.expireStaleAgents();
     await this.expireSessions();
     await this.expireRunningTasks();
     await this.applyArtifactRetention();
@@ -738,9 +763,10 @@ class PostgresStore implements PatchbayStore {
           capabilities,
           tailscale,
           last_seen_at,
+          lease_expires_at,
           created_at
         )
-        VALUES ($1, $2, $3, $4, 'online', 0, NULL, $5, $6, now(), now())
+        VALUES ($1, $2, $3, $4, 'online', 0, NULL, $5, $6, now(), now() + make_interval(secs => $7::int), now())
         RETURNING *
       `,
       [
@@ -749,7 +775,8 @@ class PostgresStore implements PatchbayStore {
         input.name,
         input.version,
         capabilities,
-        JSON.stringify(tailscale)
+        JSON.stringify(tailscale),
+        agentLeaseSeconds()
       ]
     );
 
@@ -930,6 +957,7 @@ class PostgresStore implements PatchbayStore {
   async claimTasks(agentId: string): Promise<DiagnosticTask[]> {
     await this.expireSessions();
     await this.expireRunningTasks();
+    await this.expireStaleAgents();
     const agent = await this.pool.query(
       "SELECT id, capabilities FROM agents WHERE id = $1",
       [agentId]
@@ -939,8 +967,8 @@ class PostgresStore implements PatchbayStore {
     }
 
     await this.pool.query(
-      "UPDATE agents SET status = 'online', last_seen_at = now() WHERE id = $1",
-      [agentId]
+      "UPDATE agents SET status = 'online', last_seen_at = now(), lease_expires_at = now() + make_interval(secs => $2::int) WHERE id = $1",
+      [agentId, agentLeaseSeconds()]
     );
 
     const result = await this.pool.query(
@@ -1157,6 +1185,27 @@ class PostgresStore implements PatchbayStore {
     }
   }
 
+  private async expireStaleAgents() {
+    const result = await this.pool.query(
+      `
+        UPDATE agents
+        SET status = 'offline'
+        WHERE revoked_at IS NULL
+          AND status IN ('online', 'idle')
+          AND lease_expires_at <= now()
+        RETURNING id, environment_id, last_seen_at, lease_expires_at
+      `
+    );
+
+    for (const row of result.rows) {
+      await this.addAudit("agent.lease.expired", "system", stringValue(row.id), {
+        environmentId: stringValue(row.environment_id),
+        lastSeenAt: isoValue(row.last_seen_at),
+        leaseExpiresAt: isoValue(row.lease_expires_at)
+      });
+    }
+  }
+
   private async expireSessions() {
     const expiredSessions = await this.pool.query(
       "UPDATE sessions SET status = 'expired' WHERE status = 'active' AND expires_at <= now() RETURNING id"
@@ -1347,6 +1396,17 @@ const taskTimeoutSeconds = () => {
   return Math.min(value, 24 * 60 * 60);
 };
 
+const agentLeaseSeconds = () => {
+  const value = Number(process.env.PATCHBAY_AGENT_LEASE_SECONDS ?? 120);
+  if (!Number.isInteger(value) || value <= 0) {
+    return 120;
+  }
+  return Math.min(value, 24 * 60 * 60);
+};
+
+const leaseExpiry = (from: string) =>
+  new Date(Date.parse(from) + agentLeaseSeconds() * 1000).toISOString();
+
 const taskTimeoutMessage = (timeoutSeconds: number) =>
   `Task timed out after ${timeoutSeconds} seconds`;
 
@@ -1416,6 +1476,7 @@ const toAgent = (row: Record<string, unknown>): Agent => ({
     tags: ["tag:patchbay-agent"]
   }),
   lastSeenAt: isoValue(row.last_seen_at),
+  leaseExpiresAt: isoValue(row.lease_expires_at),
   createdAt: isoValue(row.created_at)
 });
 

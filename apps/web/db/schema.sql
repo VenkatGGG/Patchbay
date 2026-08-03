@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS agents (
   capabilities TEXT[] NOT NULL DEFAULT '{}',
   tailscale JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  lease_expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '120 seconds',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(environment_id, name)
 );

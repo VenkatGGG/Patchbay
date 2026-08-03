@@ -50,7 +50,7 @@ export async function POST(
         return NextResponse.json({ error: "Agent not found" }, { status: 404 });
       }
       if (
-        agent.status === "offline" ||
+        agent.revokedAt ||
         agent.credentialGeneration !== agentAuth.credentialGeneration
       ) {
         return NextResponse.json({ error: "Agent token revoked" }, { status: 401 });
