@@ -30,6 +30,7 @@
     "test:task-scheduler": "node scripts/integration/task-scheduler.mjs",
     "test:agent-lease": "node scripts/integration/agent-lease.mjs",
     "test:investigation": "node scripts/integration/investigation.mjs",
+    "test:investigation-dag": "pnpm --filter @patchbay/web test:investigation-dag",
     "test:integration:postgres": "PATCHBAY_INTEGRATION_STORAGE=postgres node scripts/integration/smoke.mjs",
     "test:postgres:schema": "pnpm --filter @patchbay/web exec node scripts/postgres-schema-smoke.mjs",
     "test:task-timeout": "node scripts/integration/task-timeout.mjs",
