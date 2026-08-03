@@ -521,6 +521,30 @@ class MemoryStore implements PatchbayStore {
         lastSeenAt: agent.lastSeenAt,
         leaseExpiresAt: agent.leaseExpiresAt
       });
+
+      for (const task of this.tasks.values()) {
+        if (
+          task.agentId !== agent.id ||
+          (task.status !== "queued" && task.status !== "running")
+        ) {
+          continue;
+        }
+
+        this.tasks.set(task.id, {
+          ...task,
+          agentId: undefined,
+          status: "queued",
+          startedAt: undefined,
+          completedAt: undefined,
+          result: undefined,
+          error: undefined
+        });
+        this.addAudit("task.requeued", "system", task.id, {
+          reason: "agent_lease_expired",
+          agentId: agent.id,
+          sessionId: task.sessionId
+        });
+      }
     }
   }
 
@@ -1198,11 +1222,37 @@ class PostgresStore implements PatchbayStore {
     );
 
     for (const row of result.rows) {
-      await this.addAudit("agent.lease.expired", "system", stringValue(row.id), {
+      const agentId = stringValue(row.id);
+      await this.addAudit("agent.lease.expired", "system", agentId, {
         environmentId: stringValue(row.environment_id),
         lastSeenAt: isoValue(row.last_seen_at),
         leaseExpiresAt: isoValue(row.lease_expires_at)
       });
+
+      const requeuedTasks = await this.pool.query(
+        `
+          UPDATE session_tasks
+          SET
+            agent_id = NULL,
+            status = 'queued',
+            started_at = NULL,
+            completed_at = NULL,
+            result = NULL,
+            error = NULL
+          WHERE agent_id = $1
+            AND status IN ('queued', 'running')
+          RETURNING id, session_id
+        `,
+        [agentId]
+      );
+
+      for (const task of requeuedTasks.rows) {
+        await this.addAudit("task.requeued", "system", stringValue(task.id), {
+          reason: "agent_lease_expired",
+          agentId,
+          sessionId: stringValue(task.session_id)
+        });
+      }
     }
   }
 

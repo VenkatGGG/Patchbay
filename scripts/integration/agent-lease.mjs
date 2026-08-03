@@ -60,6 +60,25 @@ async function main() {
   );
   assert(agentResponse.status === 201, "expected agent enrollment");
 
+  const replacementTokenResponse = await postJson(
+    "/api/environments/env_local/enrollment-token",
+    { ttlMinutes: 15 },
+    operatorHeaders()
+  );
+  assert(replacementTokenResponse.status === 200, "expected replacement enrollment token");
+
+  const replacementAgentResponse = await postJson(
+    "/api/agent/enroll",
+    {
+      environmentId: "env_local",
+      name: "lease-replacement-agent",
+      version: "test",
+      capabilities: ["system.info"]
+    },
+    enrollmentHeaders(replacementTokenResponse.body.token)
+  );
+  assert(replacementAgentResponse.status === 201, "expected replacement agent enrollment");
+
   const sessionResponse = await postJson(
     "/api/sessions",
     {
@@ -99,11 +118,48 @@ async function main() {
   const staleState = await getJson("/api/state", operatorHeaders());
   const staleAgent = findAgent(staleState, agentResponse.body.agent.id);
   assert(staleAgent.status === "offline", "expected expired lease to mark agent offline");
+  const staleTask = staleState.tasks.find(
+    (task) => task.capability === "system.info" && task.sessionId === sessionResponse.body.id
+  );
+  assert(staleTask?.status === "queued", "expected stale agent task to be requeued");
+  assert(!staleTask.agentId, "expected requeued task to be unassigned");
+  assert(
+    staleState.audit.some(
+      (event) => event.action === "task.requeued" && event.target === staleTask.id
+    ),
+    "expected task requeue audit event"
+  );
   assert(
     staleState.audit.some(
       (event) => event.action === "agent.lease.expired" && event.target === staleAgent.id
     ),
     "expected agent lease expiry audit event"
+  );
+
+  const lateEventResponse = await postJson(
+    `/api/agent/tasks/${staleTask.id}/events`,
+    {
+      agentId: agentResponse.body.agent.id,
+      level: "info",
+      message: "Stale agent event should be rejected",
+      status: "completed",
+      result: { stale: true }
+    },
+    agentHeaders(agentResponse.body.agentToken)
+  );
+  assert(
+    lateEventResponse.status === 403,
+    "expected stale agent event to be rejected after requeue"
+  );
+
+  const replacementClaimResponse = await getResponse(
+    `/api/agent/tasks?agentId=${replacementAgentResponse.body.agent.id}`,
+    agentHeaders(replacementAgentResponse.body.agentToken)
+  );
+  assert(replacementClaimResponse.status === 200, "expected replacement task poll");
+  assert(
+    replacementClaimResponse.body.some((task) => task.id === staleTask.id),
+    "expected replacement agent to claim the requeued task"
   );
 
   const recoveryResponse = await getResponse(
@@ -125,7 +181,10 @@ async function main() {
       {
         ok: true,
         statusAfterExpiry: staleAgent.status,
-        statusAfterRecovery: recoveredAgent.status
+        statusAfterRecovery: recoveredAgent.status,
+        reassignedTaskAgent: replacementClaimResponse.body.find(
+          (task) => task.id === staleTask.id
+        )?.agentId
       },
       null,
       2
