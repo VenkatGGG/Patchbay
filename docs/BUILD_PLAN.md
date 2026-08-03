@@ -8,6 +8,21 @@ agent into a privileged remote shell. The platform extension points are:
 - Workload adapters that describe what kind of machine or workload an agent can
   inspect.
 
+## Current Foundation Status
+
+The multi-agent read-only foundation is implemented on the
+`codex/multi-agent-foundation` branch. It includes PostgreSQL migrations,
+capability-pack enrollment, lease-aware scheduling, dependency-aware
+investigations, Gemini/offline planning and synthesis, evidence/findings
+lineage, operator views, Tailscale auth-key lifecycle handling, and deployment
+and recovery runbooks.
+
+The local live PostgreSQL gate still requires a running Docker daemon. CI runs
+the Postgres migration, integration, timeout, retention, schema, Compose, and
+production-image checks. Live Gemini and Tailscale calls are intentionally
+manual validations using credentials supplied through an external secret
+store.
+
 ## Milestone 1: Open Diagnostic Core
 
 Goal: one control plane can coordinate many agents across different workload
@@ -48,11 +63,12 @@ authorization at the capability/session layer.
 
 Deliverables:
 
-- Tailscale OAuth credential setup screen.
+- Tailscale OAuth credential setup screen. **Future product work.**
 - Tagged, ephemeral auth key creation.
 - Agent bootstrap response with auth key and tag metadata.
 - Agent-side `tailscale up` helper behind an explicit config flag.
-- Session/environment teardown hooks.
+- Explicit agent auth-key revocation and recovery runbook.
+- Session/environment teardown hooks. **Future product work for connected-device removal.**
 
 ## Milestone 4: Workload Packs
 
@@ -106,4 +122,3 @@ Out of scope until this milestone:
 - Deploy rollbacks.
 - Kubernetes mutations.
 - Cloud mutations.
-

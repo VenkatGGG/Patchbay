@@ -8,6 +8,34 @@
 
 **Tech Stack:** TypeScript/Next.js, PostgreSQL migrations, Go agents, Tailscale connectivity, Gemini provider, deterministic offline fallbacks.
 
+## Status
+
+Completed and pushed on `codex/multi-agent-foundation`:
+
+- Capability task scheduling, atomic claiming, leases, stale-task requeue, and
+  audit transitions.
+- Open Go workload-pack metadata with structured unavailable-tool results for
+  host, cloud metadata, Docker, and Kubernetes capabilities.
+- Validated offline/Gemini investigation planning with capability enforcement,
+  redaction, strict JSON parsing, timeout handling, and fallback behavior.
+- Persisted investigation plans, dependency-aware DAG execution, retries,
+  blocked descendants, evidence artifacts, findings, and synthesis references.
+- Operator views for investigation progress, agent leases, findings, and
+  evidence.
+- Tailscale auth-key timeout bounds, non-secret key identity persistence, and
+  explicit auth-key cleanup on agent revocation with fail-closed local access.
+- Deployment and recovery runbooks plus a two-agent release scenario wired into
+  the standard check gate.
+
+Remaining verification or product follow-up:
+
+- Run the live PostgreSQL migration and integration suite when a Docker daemon
+  is available locally; CI already runs the same Postgres checks.
+- Run live Gemini and Tailscale validations only with rotated credentials in an
+  external secret store. The repository contains fake-provider tests for both.
+- Future product work: OAuth setup UI, direct Tailscale device removal hooks,
+  broader workload packs, multi-tenant identity, and controlled remediation.
+
 ## Global Constraints
 
 - Keep the platform open to host, Docker, Kubernetes, AWS, GCP, and future workload packs.
@@ -19,21 +47,21 @@
 
 ## Execution Sequence
 
-1. Verify the live PostgreSQL migration and integration suite after Docker is available. Fix only failures found by that gate.
-2. Refactor diagnostic creation and task claiming so one capability task is claimable by one eligible agent, with atomic PostgreSQL claiming.
-3. Add configurable agent leases and heartbeat refresh during polling; mark stale agents offline and audit the transition.
-4. Requeue tasks from stale agents and let another eligible agent claim them without losing event history.
-5. Formalize the Go workload-pack contract and capability metadata while keeping the task protocol stable.
-6. Complete structured read-only host, Docker, and Kubernetes workload packs with unavailable-tool results and bounded redacted output.
-7. Add a schema-validated investigation-plan contract and deterministic offline planner.
-8. Persist investigations and dependency-aware plan nodes in PostgreSQL.
-9. Add Gemini-backed planning with strict JSON validation, redaction, timeout handling, offline fallback, and server-side capability enforcement.
-10. Execute plans as a dependency-aware DAG with idempotent task creation, retries, and failure propagation.
-11. Persist structured findings and evidence lineage separately from raw task events.
-12. Feed plan state, findings, and evidence references into Gemini synthesis and the offline synthesis provider.
-13. Add operator views for plan progress, agent leases, task reassignment, evidence, findings, and synthesis.
-14. Harden Tailscale lifecycle and publish the self-hosted deployment, security, and recovery runbooks.
-15. Add a complete two-agent incident scenario and run the full release verification suite.
+1. [pending] Verify the live PostgreSQL migration and integration suite after Docker is available. Fix only failures found by that gate.
+2. [completed] Refactor diagnostic creation and task claiming so one capability task is claimable by one eligible agent, with atomic PostgreSQL claiming.
+3. [completed] Add configurable agent leases and heartbeat refresh during polling; mark stale agents offline and audit the transition.
+4. [completed] Requeue tasks from stale agents and let another eligible agent claim them without losing event history.
+5. [completed] Formalize the Go workload-pack contract and capability metadata while keeping the task protocol stable.
+6. [completed] Complete structured read-only host, Docker, and Kubernetes workload packs with unavailable-tool results and bounded redacted output.
+7. [completed] Add a schema-validated investigation-plan contract and deterministic offline planner.
+8. [completed] Persist investigations and dependency-aware plan nodes in PostgreSQL.
+9. [completed] Add Gemini-backed planning with strict JSON validation, redaction, timeout handling, offline fallback, and server-side capability enforcement.
+10. [completed] Execute plans as a dependency-aware DAG with idempotent task creation, retries, and failure propagation.
+11. [completed] Persist structured findings and evidence lineage separately from raw task events.
+12. [completed] Feed plan state, findings, and evidence references into Gemini synthesis and the offline synthesis provider.
+13. [completed] Add operator views for plan progress, agent leases, task reassignment, evidence, findings, and synthesis.
+14. [completed] Harden Tailscale lifecycle and publish the self-hosted deployment, security, and recovery runbooks.
+15. [in progress] Add a complete two-agent incident scenario and run the full release verification suite.
 
 ## First Implementation Commit
 
