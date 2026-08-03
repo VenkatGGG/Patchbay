@@ -753,7 +753,7 @@ export function ControlPlaneDashboard({
                       {selectedTasks.map((task) => (
                         <tr key={task.id}>
                           <td className="mono">{task.capability}</td>
-                          <td className="mono">{task.agentId}</td>
+                          <td className="mono">{task.agentId ?? "Unassigned"}</td>
                           <td>
                             <StatusPill value={task.status} />
                           </td>

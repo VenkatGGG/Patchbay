@@ -343,18 +343,16 @@ class MemoryStore implements PatchbayStore {
       throw new Error("Session is not active");
     }
 
-    const agents = [...this.agents.values()].filter(
-      (agent) => agent.environmentId === session.environmentId
-    );
-
-    const tasks = createDiagnosticTasks(sessionId, agents);
+    const tasks = createDiagnosticTasks(sessionId);
     for (const task of tasks) {
       this.tasks.set(task.id, task);
     }
 
     this.addAudit("diagnostic.latency.created", "user", sessionId, {
       taskCount: tasks.length,
-      agentCount: agents.length
+      agentCount: [...this.agents.values()].filter(
+        (agent) => agent.environmentId === session.environmentId
+      ).length
     });
     return tasks;
   }
@@ -378,15 +376,17 @@ class MemoryStore implements PatchbayStore {
     const claimedTasks = [...this.tasks.values()].filter((task) => {
       const session = this.sessions.get(task.sessionId);
       return (
-        task.agentId === agentId &&
+        (task.agentId === undefined || task.agentId === agentId) &&
         task.status === "queued" &&
-        session?.status === "active"
+        session?.status === "active" &&
+        agent.capabilities.includes(task.capability)
       );
     });
 
     for (const task of claimedTasks) {
       this.tasks.set(task.id, {
         ...task,
+        agentId,
         status: "running",
         startedAt: task.startedAt ?? claimedAt
       });
@@ -394,6 +394,7 @@ class MemoryStore implements PatchbayStore {
 
     return claimedTasks.map((task) => ({
       ...task,
+      agentId,
       status: "running",
       startedAt: task.startedAt ?? claimedAt
     }));
@@ -887,12 +888,11 @@ class PostgresStore implements PatchbayStore {
       throw new Error("Session is not active");
     }
 
-    const agentsResult = await this.pool.query(
-      "SELECT * FROM agents WHERE environment_id = $1 ORDER BY created_at ASC",
+    const tasks = createDiagnosticTasks(sessionId);
+    const agentCountResult = await this.pool.query(
+      "SELECT count(*)::int AS count FROM agents WHERE environment_id = $1",
       [session.environmentId]
     );
-    const agents = agentsResult.rows.map(toAgent);
-    const tasks = createDiagnosticTasks(sessionId, agents);
 
     for (const task of tasks) {
       await this.pool.query(
@@ -911,7 +911,7 @@ class PostgresStore implements PatchbayStore {
         [
           task.id,
           task.sessionId,
-          task.agentId,
+          task.agentId ?? null,
           task.capability,
           JSON.stringify(task.params),
           task.status,
@@ -922,7 +922,7 @@ class PostgresStore implements PatchbayStore {
 
     await this.addAudit("diagnostic.latency.created", "user", sessionId, {
       taskCount: tasks.length,
-      agentCount: agents.length
+      agentCount: Number(agentCountResult.rows[0]?.count ?? 0)
     });
     return tasks;
   }
@@ -930,7 +930,10 @@ class PostgresStore implements PatchbayStore {
   async claimTasks(agentId: string): Promise<DiagnosticTask[]> {
     await this.expireSessions();
     await this.expireRunningTasks();
-    const agent = await this.pool.query("SELECT id FROM agents WHERE id = $1", [agentId]);
+    const agent = await this.pool.query(
+      "SELECT id, capabilities FROM agents WHERE id = $1",
+      [agentId]
+    );
     if (agent.rowCount === 0) {
       throw new Error(`Unknown agent: ${agentId}`);
     }
@@ -942,18 +945,27 @@ class PostgresStore implements PatchbayStore {
 
     const result = await this.pool.query(
       `
+        WITH candidates AS (
+          SELECT task.id
+          FROM session_tasks task
+          JOIN sessions session ON session.id = task.session_id
+          WHERE (task.agent_id IS NULL OR task.agent_id = $1)
+            AND task.status = 'queued'
+            AND session.status = 'active'
+            AND task.capability = ANY($2::text[])
+          ORDER BY task.created_at ASC
+          FOR UPDATE OF task SKIP LOCKED
+        )
         UPDATE session_tasks task
         SET
+          agent_id = $1,
           status = 'running',
           started_at = COALESCE(task.started_at, now())
-        FROM sessions session
-        WHERE session.id = task.session_id
-          AND task.agent_id = $1
-          AND task.status = 'queued'
-          AND session.status = 'active'
+        FROM candidates
+        WHERE task.id = candidates.id
         RETURNING task.*
       `,
-      [agentId]
+      [agentId, stringArray(agent.rows[0].capabilities)]
     );
 
     return result.rows
@@ -1253,7 +1265,7 @@ class PostgresStore implements PatchbayStore {
   }
 }
 
-const createDiagnosticTasks = (sessionId: string, agents: Agent[]) => {
+const createDiagnosticTasks = (sessionId: string) => {
   const desired: Capability[] = [
     "workload.discover",
     "cloud.metadata",
@@ -1265,27 +1277,14 @@ const createDiagnosticTasks = (sessionId: string, agents: Agent[]) => {
     "docker.containers",
     "kubernetes.resources"
   ];
-  const tasks: DiagnosticTask[] = [];
-
-  for (const agent of agents) {
-    const supported = desired.filter((capability) =>
-      agent.capabilities.includes(capability)
-    );
-
-    for (const capability of supported) {
-      tasks.push({
-        id: makeId("task"),
-        sessionId,
-        agentId: agent.id,
-        capability,
-        params: paramsFor(capability),
-        status: "queued",
-        createdAt: now()
-      });
-    }
-  }
-
-  return tasks;
+  return desired.map((capability): DiagnosticTask => ({
+    id: makeId("task"),
+    sessionId,
+    capability,
+    params: paramsFor(capability),
+    status: "queued" as const,
+    createdAt: now()
+  }));
 };
 
 const nextTaskState = (
@@ -1435,7 +1434,7 @@ const toSession = (row: Record<string, unknown>): DebugSession => ({
 const toTask = (row: Record<string, unknown>): DiagnosticTask => ({
   id: stringValue(row.id),
   sessionId: stringValue(row.session_id),
-  agentId: stringValue(row.agent_id),
+  agentId: optionalStringValue(row.agent_id),
   capability: stringValue(row.capability) as Capability,
   params: jsonValue<Record<string, unknown>>(row.params, {}),
   status: stringValue(row.status) as TaskStatus,
@@ -1476,6 +1475,9 @@ const toAuditEvent = (row: Record<string, unknown>): AuditEvent => ({
 });
 
 const stringValue = (value: unknown) => String(value ?? "");
+
+const optionalStringValue = (value: unknown) =>
+  value === null || value === undefined ? undefined : String(value);
 
 const stringArray = (value: unknown) => (Array.isArray(value) ? value.map(String) : []);
 

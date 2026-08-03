@@ -20,7 +20,7 @@ export type EvidenceAgent = {
 
 export type EvidenceTask = {
   id: string;
-  agentId: string;
+  agentId?: string;
   capability: Capability;
   status: TaskStatus;
   result?: unknown;

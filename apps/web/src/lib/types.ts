@@ -62,7 +62,7 @@ export type DebugSession = {
 export type DiagnosticTask = {
   id: string;
   sessionId: string;
-  agentId: string;
+  agentId?: string;
   capability: Capability;
   params: Record<string, unknown>;
   status: TaskStatus;

@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS session_tasks (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE,
   capability TEXT NOT NULL,
   params JSONB NOT NULL DEFAULT '{}'::jsonb,
   status TEXT NOT NULL,
@@ -89,6 +89,9 @@ CREATE INDEX IF NOT EXISTS idx_enrollment_invitations_environment ON enrollment_
 CREATE INDEX IF NOT EXISTS idx_sessions_environment_id ON sessions(environment_id);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_session_id ON session_tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_agent_status ON session_tasks(agent_id, status);
+CREATE INDEX IF NOT EXISTS idx_session_tasks_queued_capability
+  ON session_tasks(capability, created_at)
+  WHERE status = 'queued' AND agent_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_task_events_session_id ON task_events(session_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_task_events_idempotency_key
   ON task_events(task_id, agent_id, idempotency_key)

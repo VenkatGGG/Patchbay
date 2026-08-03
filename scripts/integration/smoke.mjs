@@ -520,11 +520,25 @@ async function main() {
     "expected close diagnostic creation"
   );
   assert(
-    closeDiagnosticResponse.body.length === 1,
-    `expected one queued close diagnostic task, got ${closeDiagnosticResponse.body.length}`
+    closeDiagnosticResponse.body.length === 9,
+    `expected one queued task for each capability, got ${closeDiagnosticResponse.body.length}`
   );
-  const closeTask = closeDiagnosticResponse.body[0];
+  const closeTask = closeDiagnosticResponse.body.find(
+    (task) => task.capability === "system.info"
+  );
   assert(closeTask?.id, "expected close diagnostic task id");
+
+  const closeTaskClaim = await getResponse(
+    `/api/agent/tasks?agentId=${redactionAgentResponse.body.agent.id}`,
+    {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }
+  );
+  assert(closeTaskClaim.status === 200, "expected close task claim");
+  assert(
+    closeTaskClaim.body.some((task) => task.id === closeTask.id),
+    "expected close task to be assigned before session closure"
+  );
 
   const closeResponse = await postJson(
     `/api/sessions/${closeSessionId}/close`,
@@ -604,11 +618,25 @@ async function main() {
     "expected expiring diagnostic creation"
   );
   assert(
-    expiringDiagnosticResponse.body.length === 1,
-    `expected one queued expiring diagnostic task, got ${expiringDiagnosticResponse.body.length}`
+    expiringDiagnosticResponse.body.length === 9,
+    `expected one queued task for each capability, got ${expiringDiagnosticResponse.body.length}`
   );
-  const expiringTask = expiringDiagnosticResponse.body[0];
+  const expiringTask = expiringDiagnosticResponse.body.find(
+    (task) => task.capability === "system.info"
+  );
   assert(expiringTask?.id, "expected expiring diagnostic task id");
+
+  const expiringTaskClaim = await getResponse(
+    `/api/agent/tasks?agentId=${redactionAgentResponse.body.agent.id}`,
+    {
+      Authorization: `Bearer ${redactionAgentResponse.body.agentToken}`
+    }
+  );
+  assert(expiringTaskClaim.status === 200, "expected expiring task claim");
+  assert(
+    expiringTaskClaim.body.some((task) => task.id === expiringTask.id),
+    "expected expiring task to be assigned before session expiry"
+  );
 
   await delay(1200);
   const expiredState = await getJson("/api/state", operatorHeaders());
@@ -727,7 +755,7 @@ async function main() {
     operatorHeaders()
   );
   assert(diagnosticResponse.status === 201, "expected diagnostics creation to return 201");
-  assert(diagnosticResponse.body.length === 10, "expected all read-only tasks");
+  assert(diagnosticResponse.body.length === 9, "expected all read-only tasks");
   assert(
     diagnosticResponse.body.some((task) => task.capability === "cloud.metadata"),
     "expected diagnostics to include cloud metadata task"
@@ -735,7 +763,7 @@ async function main() {
   const firstDiagnosticTask = diagnosticResponse.body[0];
   assert(firstDiagnosticTask?.id, "expected a diagnostic task id");
   const redactionTask = diagnosticResponse.body.find(
-    (task) => task.agentId === redactionAgentResponse.body.agent.id
+    (task) => task.capability === "system.info"
   );
   assert(redactionTask?.id, "expected redaction agent diagnostic task");
 
@@ -1043,7 +1071,7 @@ async function main() {
   await waitForCondition("all diagnostic tasks to complete", async () => {
     const state = await getJson("/api/state", operatorHeaders());
     const tasks = state.tasks.filter((task) => task.sessionId === sessionId);
-    return tasks.length === 10 && tasks.every((task) => task.status === "completed");
+    return tasks.length === 9 && tasks.every((task) => task.status === "completed");
   });
 
   const synthesisResponse = await postJson(

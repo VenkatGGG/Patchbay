@@ -101,9 +101,21 @@ async function main() {
     operatorHeaders()
   );
   assert(diagnosticResponse.status === 201, "expected diagnostics creation");
-  assert(diagnosticResponse.body.length === 1, "expected one diagnostic task");
+  assert(
+    diagnosticResponse.body.length === 9,
+    "expected one task for each read-only capability"
+  );
 
-  const task = diagnosticResponse.body[0];
+  const task = diagnosticResponse.body.find(
+    (candidate) => candidate.capability === "system.info"
+  );
+  assert(task?.id, "expected system info task");
+  const claimResponse = await getResponse(
+    `/api/agent/tasks?agentId=${agentResponse.body.agent.id}`,
+    { Authorization: `Bearer ${agentResponse.body.agentToken}` }
+  );
+  assert(claimResponse.status === 200, "expected task claim");
+  assert(claimResponse.body.length === 1, "expected one claimed task");
   const eventResponse = await postJson(
     `/api/agent/tasks/${task.id}/events`,
     {

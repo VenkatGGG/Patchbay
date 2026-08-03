@@ -50,7 +50,7 @@ export function buildSessionReport(
     "",
     "| Capability | Agent | Status | Completed |",
     "| --- | --- | --- | --- |",
-    ...tasks.map((task) => taskRow(task, agentsById.get(task.agentId)?.name)),
+    ...tasks.map((task) => taskRow(task, agentsById.get(task.agentId ?? "")?.name)),
     ""
   ];
 
@@ -71,7 +71,7 @@ export function buildSessionReport(
       lines.push(
         `### ${task.capability}`,
         "",
-        `- Agent: ${agentsById.get(task.agentId)?.name ?? task.agentId}`,
+        `- Agent: ${agentsById.get(task.agentId ?? "")?.name ?? task.agentId ?? "Unassigned"}`,
         `- Status: ${task.status}`,
         "",
         "```json",
@@ -96,7 +96,7 @@ function summarizeTasks(tasks: DiagnosticTask[]) {
 
 function taskRow(task: DiagnosticTask, agentName?: string) {
   return `| ${markdownCell(task.capability)} | ${markdownCell(
-    agentName ?? task.agentId
+    agentName ?? task.agentId ?? "Unassigned"
   )} | ${markdownCell(task.status)} | ${markdownCell(task.completedAt ?? "")} |`;
 }
 
