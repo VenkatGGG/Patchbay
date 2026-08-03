@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS investigation_nodes (
   depends_on TEXT[] NOT NULL DEFAULT '{}',
   rationale TEXT NOT NULL,
   status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 2,
   task_id TEXT REFERENCES session_tasks(id) ON DELETE SET NULL,
   error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

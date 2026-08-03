@@ -89,8 +89,17 @@ export async function POST(
     });
     const plan = enforcePlanCapabilities(planning.plan, allowedCapabilities);
     const result = await store.createInvestigation({ sessionId, plan });
+    const started = await store.startInvestigation(result.investigation.id);
+    const stateAfterStart = await store.snapshot();
     return NextResponse.json(
-      { ...result, planner: planning.provider },
+      {
+        investigation: started.investigation,
+        nodes: stateAfterStart.investigationNodes.filter(
+          (node) => node.investigationId === started.investigation.id
+        ),
+        tasks: started.tasks,
+        planner: planning.provider
+      },
       { status: 201 }
     );
   } catch (error) {

@@ -1,4 +1,9 @@
 import pg from "pg";
+import {
+  blockedInvestigationNodes,
+  failedNodeAction,
+  readyInvestigationNodes
+} from "./investigation-dag";
 import { defaultCapabilityParams } from "./investigation-plan";
 import { artifactRetentionCutoffMs } from "./retention";
 import {
@@ -115,6 +120,10 @@ export type PatchbayStore = {
   createInvestigation(input: CreateInvestigationInput): Promise<{
     investigation: Investigation;
     nodes: InvestigationNode[];
+  }>;
+  startInvestigation(investigationId: string): Promise<{
+    investigation: Investigation;
+    tasks: DiagnosticTask[];
   }>;
   closeSession(sessionId: string, actor?: string): Promise<DebugSession>;
   createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]>;
@@ -352,6 +361,8 @@ class MemoryStore implements PatchbayStore {
         dependsOn: node.dependsOn,
         rationale: node.rationale,
         status: "pending",
+        attempts: 0,
+        maxAttempts: 2,
         createdAt,
         updatedAt: createdAt
       })
@@ -366,6 +377,131 @@ class MemoryStore implements PatchbayStore {
       nodeCount: nodes.length
     });
     return { investigation, nodes };
+  }
+
+  async startInvestigation(investigationId: string) {
+    const investigation = this.investigations.get(investigationId);
+    if (!investigation) {
+      throw new Error(`Unknown investigation: ${investigationId}`);
+    }
+
+    const tasks = this.enqueueReadyInvestigationNodes(investigationId);
+    const nextInvestigation = this.refreshInvestigationStatus(investigationId);
+    this.investigations.set(investigationId, nextInvestigation);
+    this.addAudit("investigation.started", "operator", investigationId, {
+      taskCount: tasks.length
+    });
+    return { investigation: nextInvestigation, tasks };
+  }
+
+  private enqueueReadyInvestigationNodes(investigationId: string): DiagnosticTask[] {
+    const nodes = [...this.investigationNodes.values()].filter(
+      (node) => node.investigationId === investigationId
+    );
+    const ready = readyInvestigationNodes(nodes);
+    const tasks: DiagnosticTask[] = [];
+    for (const node of ready) {
+      const createdAt = now();
+      const task: DiagnosticTask = {
+        id: makeId("task"),
+        sessionId: this.investigations.get(investigationId)?.sessionId ?? "",
+        investigationNodeId: node.id,
+        capability: node.capability,
+        params: node.params,
+        status: "queued",
+        createdAt
+      };
+      this.tasks.set(task.id, task);
+      this.investigationNodes.set(node.id, {
+        ...node,
+        status: "queued",
+        attempts: node.attempts + 1,
+        taskId: task.id,
+        updatedAt: createdAt
+      });
+      tasks.push(task);
+    }
+    return tasks;
+  }
+
+  private advanceInvestigationAfterTask(task: DiagnosticTask) {
+    const nodeId = task.investigationNodeId;
+    if (!nodeId) return;
+    const node = this.investigationNodes.get(nodeId);
+    if (!node) return;
+
+    const updatedAt = now();
+    if (task.status === "running") {
+      this.investigationNodes.set(node.id, { ...node, status: "running", updatedAt });
+    } else if (task.status === "completed") {
+      this.investigationNodes.set(node.id, {
+        ...node,
+        status: "completed",
+        error: undefined,
+        updatedAt
+      });
+    } else if (task.status === "failed") {
+      if (failedNodeAction(node) === "retry") {
+        this.investigationNodes.set(node.id, {
+          ...node,
+          status: "pending",
+          taskId: undefined,
+          error: task.error,
+          updatedAt
+        });
+        this.addAudit("investigation.node.retry", "system", node.id, {
+          investigationId: node.investigationId,
+          attempts: node.attempts,
+          maxAttempts: node.maxAttempts
+        });
+      } else {
+        this.investigationNodes.set(node.id, {
+          ...node,
+          status: "failed",
+          error: task.error,
+          updatedAt
+        });
+        this.blockInvestigationDescendants(node.investigationId);
+      }
+    }
+
+    this.enqueueReadyInvestigationNodes(node.investigationId);
+    this.investigations.set(
+      node.investigationId,
+      this.refreshInvestigationStatus(node.investigationId)
+    );
+  }
+
+  private blockInvestigationDescendants(investigationId: string) {
+    while (true) {
+      const nodes = [...this.investigationNodes.values()].filter(
+        (node) => node.investigationId === investigationId
+      );
+      const blocked = blockedInvestigationNodes(nodes);
+      if (blocked.length === 0) {
+        return;
+      }
+      for (const node of blocked) {
+        this.investigationNodes.set(node.id, {
+          ...node,
+          status: "blocked",
+          error: "Dependency failed",
+          updatedAt: now()
+        });
+      }
+    }
+  }
+
+  private refreshInvestigationStatus(investigationId: string): Investigation {
+    const investigation = this.investigations.get(investigationId);
+    if (!investigation) {
+      throw new Error(`Unknown investigation: ${investigationId}`);
+    }
+    const nodes = [...this.investigationNodes.values()].filter(
+      (node) => node.investigationId === investigationId
+    );
+    const status = investigationStatus(nodes);
+    return { ...investigation, status, updatedAt: now() };
   }
 
   async closeSession(sessionId: string, actor = "operator"): Promise<DebugSession> {
@@ -505,7 +641,9 @@ class MemoryStore implements PatchbayStore {
     };
 
     this.events.set(event.id, event);
-    this.tasks.set(task.id, nextTaskState(task, event.createdAt, input));
+    const nextTask = nextTaskState(task, event.createdAt, input);
+    this.tasks.set(task.id, nextTask);
+    this.advanceInvestigationAfterTask(nextTask);
     return event;
   }
 
@@ -1037,6 +1175,8 @@ class PostgresStore implements PatchbayStore {
         dependsOn: node.dependsOn,
         rationale: node.rationale,
         status: "pending",
+        attempts: 0,
+        maxAttempts: 2,
         createdAt,
         updatedAt: createdAt
       })
@@ -1068,9 +1208,9 @@ class PostgresStore implements PatchbayStore {
           `
             INSERT INTO investigation_nodes (
               id, investigation_id, node_key, capability, params, depends_on,
-              rationale, status, created_at, updated_at
+              rationale, status, attempts, max_attempts, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 2, $9, $10)
           `,
           [
             node.id,
@@ -1099,6 +1239,97 @@ class PostgresStore implements PatchbayStore {
       );
       await client.query("COMMIT");
       return { investigation, nodes };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async startInvestigation(investigationId: string) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const investigationResult = await client.query(
+        "SELECT * FROM investigations WHERE id = $1 FOR UPDATE",
+        [investigationId]
+      );
+      if (investigationResult.rows.length === 0) {
+        throw new Error(`Unknown investigation: ${investigationId}`);
+      }
+
+      const investigation = toInvestigation(investigationResult.rows[0]);
+      const nodeResult = await client.query(
+        "SELECT * FROM investigation_nodes WHERE investigation_id = $1 ORDER BY created_at ASC FOR UPDATE",
+        [investigationId]
+      );
+      const nodes = nodeResult.rows.map(toInvestigationNode);
+      const ready = readyInvestigationNodes(nodes);
+      const tasks: DiagnosticTask[] = [];
+      const updatedNodes = new Map(nodes.map((node) => [node.id, node]));
+
+      for (const node of ready) {
+        const createdAt = now();
+        const task: DiagnosticTask = {
+          id: makeId("task"),
+          sessionId: investigation.sessionId,
+          investigationNodeId: node.id,
+          capability: node.capability,
+          params: node.params,
+          status: "queued",
+          createdAt
+        };
+        await client.query(
+          `
+            INSERT INTO session_tasks (
+              id, session_id, agent_id, investigation_node_id, capability,
+              params, status, created_at
+            )
+            VALUES ($1, $2, NULL, $3, $4, $5, 'queued', $6)
+          `,
+          [task.id, task.sessionId, node.id, task.capability, JSON.stringify(task.params), createdAt]
+        );
+        await client.query(
+          `
+            UPDATE investigation_nodes
+            SET status = 'queued', attempts = attempts + 1, task_id = $2, updated_at = $3
+            WHERE id = $1
+          `,
+          [node.id, task.id, createdAt]
+        );
+        updatedNodes.set(node.id, {
+          ...node,
+          status: "queued",
+          attempts: node.attempts + 1,
+          taskId: task.id,
+          updatedAt: createdAt
+        });
+        tasks.push(task);
+      }
+
+      const nextStatus = investigationStatus([...updatedNodes.values()]);
+      const updatedInvestigationResult = await client.query(
+        `
+          UPDATE investigations
+          SET status = $2, updated_at = $3
+          WHERE id = $1
+          RETURNING *
+        `,
+        [investigationId, nextStatus, now()]
+      );
+      await client.query(
+        `
+          INSERT INTO audit_log (id, action, actor, target, metadata)
+          VALUES ($1, 'investigation.started', 'operator', $2, $3)
+        `,
+        [makeId("aud"), investigationId, JSON.stringify({ taskCount: tasks.length })]
+      );
+      await client.query("COMMIT");
+      return {
+        investigation: toInvestigation(updatedInvestigationResult.rows[0]),
+        tasks
+      };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -1301,6 +1532,7 @@ class PostgresStore implements PatchbayStore {
         ]
       );
 
+      await this.advancePostgresInvestigation(client, nextTask);
       await client.query("COMMIT");
       return event;
     } catch (error) {
@@ -1309,6 +1541,147 @@ class PostgresStore implements PatchbayStore {
     } finally {
       client.release();
     }
+  }
+
+  private async advancePostgresInvestigation(
+    client: pg.PoolClient,
+    task: DiagnosticTask
+  ) {
+    if (!task.investigationNodeId) {
+      return;
+    }
+
+    const nodeResult = await client.query(
+      "SELECT * FROM investigation_nodes WHERE id = $1 FOR UPDATE",
+      [task.investigationNodeId]
+    );
+    if (nodeResult.rows.length === 0) {
+      return;
+    }
+
+    const node = toInvestigationNode(nodeResult.rows[0]);
+    if (task.status === "running") {
+      await client.query(
+        "UPDATE investigation_nodes SET status = 'running', updated_at = $2 WHERE id = $1",
+        [node.id, now()]
+      );
+    } else if (task.status === "completed") {
+      await client.query(
+        "UPDATE investigation_nodes SET status = 'completed', error = NULL, updated_at = $2 WHERE id = $1",
+        [node.id, now()]
+      );
+    } else if (task.status === "failed") {
+      if (failedNodeAction(node) === "retry") {
+        await client.query(
+          "UPDATE investigation_nodes SET status = 'pending', task_id = NULL, error = $2, updated_at = $3 WHERE id = $1",
+          [node.id, task.error ?? null, now()]
+        );
+        await client.query(
+          `
+            INSERT INTO audit_log (id, action, actor, target, metadata)
+            VALUES ($1, 'investigation.node.retry', 'system', $2, $3)
+          `,
+          [
+            makeId("aud"),
+            node.id,
+            JSON.stringify({
+              investigationId: node.investigationId,
+              attempts: node.attempts,
+              maxAttempts: node.maxAttempts
+            })
+          ]
+        );
+      } else {
+        await client.query(
+          "UPDATE investigation_nodes SET status = 'failed', error = $2, updated_at = $3 WHERE id = $1",
+          [node.id, task.error ?? null, now()]
+        );
+      }
+    }
+
+    const allNodesResult = await client.query(
+      "SELECT * FROM investigation_nodes WHERE investigation_id = $1 ORDER BY created_at ASC FOR UPDATE",
+      [node.investigationId]
+    );
+    let nodes = allNodesResult.rows.map(toInvestigationNode);
+    if (task.status === "failed" && failedNodeAction(node) === "fail") {
+      while (true) {
+        const blocked = blockedInvestigationNodes(nodes);
+        if (blocked.length === 0) {
+          break;
+        }
+        for (const blockedNode of blocked) {
+          await client.query(
+            "UPDATE investigation_nodes SET status = 'blocked', error = 'Dependency failed', updated_at = $2 WHERE id = $1",
+            [blockedNode.id, now()]
+          );
+        }
+        const blockedRefresh = await client.query(
+          "SELECT * FROM investigation_nodes WHERE investigation_id = $1 ORDER BY created_at ASC",
+          [node.investigationId]
+        );
+        nodes = blockedRefresh.rows.map(toInvestigationNode);
+      }
+      const refreshed = await client.query(
+        "SELECT * FROM investigation_nodes WHERE investigation_id = $1 ORDER BY created_at ASC",
+        [node.investigationId]
+      );
+      nodes = refreshed.rows.map(toInvestigationNode);
+    } else {
+      const refreshed = await client.query(
+        "SELECT * FROM investigation_nodes WHERE investigation_id = $1 ORDER BY created_at ASC",
+        [node.investigationId]
+      );
+      nodes = refreshed.rows.map(toInvestigationNode);
+    }
+
+    const investigationResult = await client.query(
+      "SELECT * FROM investigations WHERE id = $1 FOR UPDATE",
+      [node.investigationId]
+    );
+    const investigation = toInvestigation(investigationResult.rows[0]);
+    for (const ready of readyInvestigationNodes(nodes)) {
+      const createdAt = now();
+      const nextTask: DiagnosticTask = {
+        id: makeId("task"),
+        sessionId: investigation.sessionId,
+        investigationNodeId: ready.id,
+        capability: ready.capability,
+        params: ready.params,
+        status: "queued",
+        createdAt
+      };
+      await client.query(
+        `
+          INSERT INTO session_tasks (
+            id, session_id, agent_id, investigation_node_id, capability,
+            params, status, created_at
+          )
+          VALUES ($1, $2, NULL, $3, $4, $5, 'queued', $6)
+        `,
+        [
+          nextTask.id,
+          nextTask.sessionId,
+          ready.id,
+          nextTask.capability,
+          JSON.stringify(nextTask.params),
+          createdAt
+        ]
+      );
+      await client.query(
+        "UPDATE investigation_nodes SET status = 'queued', attempts = attempts + 1, task_id = $2, updated_at = $3 WHERE id = $1",
+        [ready.id, nextTask.id, createdAt]
+      );
+    }
+
+    const finalNodesResult = await client.query(
+      "SELECT * FROM investigation_nodes WHERE investigation_id = $1 ORDER BY created_at ASC",
+      [node.investigationId]
+    );
+    await client.query(
+      "UPDATE investigations SET status = $2, updated_at = $3 WHERE id = $1",
+      [node.investigationId, investigationStatus(finalNodesResult.rows.map(toInvestigationNode)), now()]
+    );
   }
 
   private async findTaskEventByIdempotencyKey(
@@ -1612,6 +1985,15 @@ const ensureTaskEventCanApply = (task: DiagnosticTask, input: AddTaskEventInput)
 const isTerminalTaskStatus = (status: TaskStatus) =>
   status === "completed" || status === "failed" || status === "denied";
 
+const investigationStatus = (nodes: readonly InvestigationNode[]) =>
+  nodes.some((node) => node.status === "failed")
+    ? ("failed" as const)
+    : nodes.every((node) => node.status === "completed" || node.status === "blocked")
+      ? nodes.some((node) => node.status === "blocked")
+        ? ("failed" as const)
+        : ("completed" as const)
+      : ("running" as const);
+
 const sessionTtlSeconds = (input: Pick<CreateSessionInput, "ttlMinutes" | "ttlSeconds">) =>
   input.ttlSeconds ?? (input.ttlMinutes ?? 30) * 60;
 
@@ -1703,6 +2085,7 @@ const toTask = (row: Record<string, unknown>): DiagnosticTask => ({
   id: stringValue(row.id),
   sessionId: stringValue(row.session_id),
   agentId: optionalStringValue(row.agent_id),
+  investigationNodeId: optionalStringValue(row.investigation_node_id),
   capability: stringValue(row.capability) as Capability,
   params: jsonValue<Record<string, unknown>>(row.params, {}),
   status: stringValue(row.status) as TaskStatus,
@@ -1753,6 +2136,8 @@ const toInvestigationNode = (row: Record<string, unknown>): InvestigationNode =>
   dependsOn: stringArray(row.depends_on),
   rationale: stringValue(row.rationale),
   status: stringValue(row.status) as InvestigationNode["status"],
+  attempts: numberValue(row.attempts, 0),
+  maxAttempts: numberValue(row.max_attempts, 2),
   taskId: optionalStringValue(row.task_id),
   error: row.error === null ? undefined : optionalStringValue(row.error),
   createdAt: isoValue(row.created_at),

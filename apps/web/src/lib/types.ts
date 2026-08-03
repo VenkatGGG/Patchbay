@@ -89,6 +89,7 @@ export type DiagnosticTask = {
   sessionId: string;
   agentId?: string;
   capability: Capability;
+  investigationNodeId?: string;
   params: Record<string, unknown>;
   status: TaskStatus;
   createdAt: string;
@@ -147,6 +148,8 @@ export type InvestigationNode = {
   dependsOn: string[];
   rationale: string;
   status: InvestigationNodeStatus;
+  attempts: number;
+  maxAttempts: number;
   taskId?: string;
   error?: string;
   createdAt: string;

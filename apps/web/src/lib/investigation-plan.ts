@@ -118,10 +118,7 @@ export function buildOfflineInvestigationPlan(
     id: nodeIdFor(capability),
     capability,
     params: defaultCapabilityParams(capability),
-    dependsOn:
-      capability === "workload.discover" || !available.has("workload.discover")
-        ? []
-        : [discoveryId],
+    dependsOn: dependencyFor(capability, available, discoveryId),
     rationale: rationaleFor(capability)
   }));
 
@@ -159,6 +156,20 @@ export function defaultCapabilityParams(
 
 function nodeIdFor(capability: Capability) {
   return `node_${capability.replaceAll(".", "_")}`;
+}
+
+function dependencyFor(
+  capability: Capability,
+  available: Set<Capability>,
+  discoveryId: string
+) {
+  if (capability === "workload.discover") {
+    return [];
+  }
+  if (capability === "process.list" && available.has("system.info")) {
+    return [nodeIdFor("system.info")];
+  }
+  return available.has("workload.discover") ? [discoveryId] : [];
 }
 
 function rationaleFor(capability: Capability) {

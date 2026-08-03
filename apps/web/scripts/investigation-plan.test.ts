@@ -26,6 +26,10 @@ test("offline planner emits a stable read-only dependency graph", () => {
     ]
   );
   assert.deepEqual(plan.nodes[1]?.dependsOn, ["node_workload_discover"]);
+  assert.deepEqual(
+    plan.nodes.find((node) => node.capability === "process.list")?.dependsOn,
+    ["node_system_info"]
+  );
   assert.deepEqual(plan.nodes.at(-1)?.dependsOn, ["node_workload_discover"]);
 });
 

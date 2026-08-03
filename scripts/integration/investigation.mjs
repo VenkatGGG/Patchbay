@@ -79,7 +79,7 @@ async function main() {
     operatorHeaders()
   );
   assert.equal(investigationResponse.status, 201, "expected investigation creation");
-  assert.equal(investigationResponse.body.investigation.status, "planned");
+  assert.equal(investigationResponse.body.investigation.status, "running");
   assert.equal(investigationResponse.body.nodes.length, 3);
   assert.deepEqual(
     investigationResponse.body.nodes.map((node) => node.capability),
@@ -87,7 +87,18 @@ async function main() {
   );
   assert.deepEqual(investigationResponse.body.nodes[1].dependsOn, ["node_workload_discover"]);
 
-  const state = await getJson("/api/state", operatorHeaders());
+  assert.equal(investigationResponse.body.tasks.length, 1, "expected only the root node to queue");
+  const agentAuth = enrollmentHeaders(agentResponse.body.agentToken);
+  const rootTask = investigationResponse.body.tasks[0];
+  const rootClaim = await getResponse(
+    `/api/agent/tasks?agentId=${agentResponse.body.agent.id}`,
+    agentAuth
+  );
+  assert.equal(rootClaim.status, 200);
+  assert.equal(rootClaim.body.length, 1);
+  await completeTask(rootTask.id, agentResponse.body.agent.id, agentAuth, "root completed");
+
+  let state = await getJson("/api/state", operatorHeaders());
   assert.equal(
     state.investigations.some((item) => item.id === investigationResponse.body.investigation.id),
     true,
@@ -101,7 +112,40 @@ async function main() {
     "expected persisted plan nodes in state"
   );
 
-  console.log(JSON.stringify({ ok: true, nodeCount: investigationResponse.body.nodes.length }, null, 2));
+  const systemTask = state.tasks.find(
+    (task) => task.investigationNodeId && task.capability === "system.info" && task.status === "queued"
+  );
+  assert(systemTask, "expected system node to unlock after root completion");
+  const systemClaim = await getResponse(
+    `/api/agent/tasks?agentId=${agentResponse.body.agent.id}`,
+    agentAuth
+  );
+  assert.equal(systemClaim.body.length, 1);
+  await failTask(systemTask.id, agentResponse.body.agent.id, agentAuth, "first failure");
+
+  state = await getJson("/api/state", operatorHeaders());
+  const retryTask = state.tasks.find(
+    (task) => task.investigationNodeId === systemTask.investigationNodeId && task.status === "queued"
+  );
+  assert(retryTask, "expected failed node to be retried");
+  const retryClaim = await getResponse(
+    `/api/agent/tasks?agentId=${agentResponse.body.agent.id}`,
+    agentAuth
+  );
+  assert.equal(retryClaim.body.length, 1);
+  await failTask(retryTask.id, agentResponse.body.agent.id, agentAuth, "final failure");
+
+  state = await getJson("/api/state", operatorHeaders());
+  const finalInvestigation = state.investigations.find(
+    (item) => item.id === investigationResponse.body.investigation.id
+  );
+  assert.equal(finalInvestigation.status, "failed");
+  const finalNodes = state.investigationNodes.filter(
+    (node) => node.investigationId === finalInvestigation.id
+  );
+  assert.equal(finalNodes.find((node) => node.nodeKey === "node_process_list").status, "blocked");
+
+  console.log(JSON.stringify({ ok: true, nodeCount: finalNodes.length, retryCount: 1 }, null, 2));
 }
 
 function spawnProcess(command, args, env = {}) {
@@ -144,6 +188,11 @@ async function getJson(path, headers = {}) {
   return response.json();
 }
 
+async function getResponse(path, headers = {}) {
+  const response = await fetch(`${baseUrl}${path}`, { headers });
+  return { status: response.status, body: await response.json().catch(() => ({})) };
+}
+
 async function postJson(path, payload, headers = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method: "POST",
@@ -151,6 +200,38 @@ async function postJson(path, payload, headers = {}) {
     body: JSON.stringify(payload)
   });
   return { status: response.status, body: await response.json().catch(() => ({})) };
+}
+
+async function completeTask(taskId, agentId, headers, message) {
+  const response = await postJson(
+    `/api/agent/tasks/${taskId}/events`,
+    {
+      agentId,
+      level: "info",
+      message,
+      status: "completed",
+      idempotencyKey: `${taskId}:completed`,
+      result: { ok: true }
+    },
+    headers
+  );
+  assert.equal(response.status, 201);
+}
+
+async function failTask(taskId, agentId, headers, message) {
+  const response = await postJson(
+    `/api/agent/tasks/${taskId}/events`,
+    {
+      agentId,
+      level: "error",
+      message,
+      status: "failed",
+      idempotencyKey: `${taskId}:failed`,
+      error: message
+    },
+    headers
+  );
+  assert.equal(response.status, 201);
 }
 
 function operatorHeaders() {

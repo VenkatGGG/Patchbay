@@ -77,12 +77,18 @@ CREATE TABLE IF NOT EXISTS investigation_nodes (
   depends_on TEXT[] NOT NULL DEFAULT '{}',
   rationale TEXT NOT NULL,
   status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 2,
   task_id TEXT REFERENCES session_tasks(id) ON DELETE SET NULL,
   error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(investigation_id, node_key)
 );
+
+ALTER TABLE session_tasks
+  ADD COLUMN IF NOT EXISTS investigation_node_id TEXT
+    REFERENCES investigation_nodes(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS task_events (
   id TEXT PRIMARY KEY,
