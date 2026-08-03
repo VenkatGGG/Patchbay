@@ -118,7 +118,7 @@ try {
       )
       VALUES ($1, $2, 'bad-tailscale-agent', 'test', 'online', $3, $4, $5)
     `,
-    [`agt_bad_tailscale_${suffix}`, ids.environment, ["system.info"], "{}", "[]"]
+    [`agt_bad_tailscale_${suffix}`, ids.environment, ["system.info"], "[]", "[]"]
   );
   await assertRejectsConstraint(
     "non-array capability packs",
