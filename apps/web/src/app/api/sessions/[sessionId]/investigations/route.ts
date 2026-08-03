@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJsonBody } from "@/lib/api-validation";
-import { buildOfflineInvestigationPlan } from "@/lib/investigation-plan";
+import { enforcePlanCapabilities } from "@/lib/investigation-plan";
+import { planInvestigation } from "@/lib/llm";
 import { requireOperator } from "@/lib/operator-auth";
 import { store } from "@/lib/store";
 import { READ_ONLY_CAPABILITIES } from "@/lib/types";
@@ -50,10 +51,46 @@ export async function POST(
   if (!parsed.ok) return parsed.response;
 
   const { sessionId } = await context.params;
-  const plan = buildOfflineInvestigationPlan(parsed.data);
   try {
+    const session = await store.getSession(sessionId);
+    if (!session) {
+      return NextResponse.json({ error: `Unknown session: ${sessionId}` }, { status: 404 });
+    }
+
+    const state = await store.snapshot();
+    const availableCapabilities = [
+      ...new Set(
+        state.agents
+          .filter(
+            (agent) =>
+              agent.environmentId === session.environmentId &&
+              !agent.revokedAt &&
+              agent.status !== "offline"
+          )
+          .flatMap((agent) => agent.capabilities)
+      )
+    ];
+    const requestedCapabilities = parsed.data.capabilities ?? session.allowedCapabilities;
+    const allowedCapabilities = requestedCapabilities.filter(
+      (capability) =>
+        session.allowedCapabilities.includes(capability) &&
+        availableCapabilities.includes(capability)
+    );
+    if (allowedCapabilities.length === 0) {
+      return NextResponse.json(
+        { error: "No requested read-only capabilities are available from enrolled agents" },
+        { status: 409 }
+      );
+    }
+
+    const planning = await planInvestigation({
+      objective: parsed.data.objective,
+      capabilities: allowedCapabilities
+    });
+    const plan = enforcePlanCapabilities(planning.plan, allowedCapabilities);
+    const result = await store.createInvestigation({ sessionId, plan });
     return NextResponse.json(
-      await store.createInvestigation({ sessionId, plan }),
+      { ...result, planner: planning.provider },
       { status: 201 }
     );
   } catch (error) {

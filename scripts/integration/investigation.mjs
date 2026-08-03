@@ -40,6 +40,24 @@ async function main() {
 
   await waitForJson("/api/health");
 
+  const enrollmentTokenResponse = await postJson(
+    "/api/environments/env_local/enrollment-token",
+    { ttlMinutes: 15 },
+    operatorHeaders()
+  );
+  assert.equal(enrollmentTokenResponse.status, 200, "expected enrollment token");
+  const agentResponse = await postJson(
+    "/api/agent/enroll",
+    {
+      environmentId: "env_local",
+      name: "investigation-agent",
+      version: "test",
+      capabilities: ["workload.discover", "system.info", "process.list"]
+    },
+    enrollmentHeaders(enrollmentTokenResponse.body.token)
+  );
+  assert.equal(agentResponse.status, 201, "expected agent enrollment");
+
   const sessionResponse = await postJson(
     "/api/sessions",
     {
@@ -137,6 +155,10 @@ async function postJson(path, payload, headers = {}) {
 
 function operatorHeaders() {
   return { Authorization: `Bearer ${operatorToken}` };
+}
+
+function enrollmentHeaders(token) {
+  return { Authorization: `Bearer ${token}` };
 }
 
 async function cleanup() {

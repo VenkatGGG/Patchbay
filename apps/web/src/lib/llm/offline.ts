@@ -1,4 +1,5 @@
 import { DebugSession } from "../types";
+import { buildOfflineInvestigationPlan } from "../investigation-plan";
 import { EvidencePayload, LLMProvider, SynthesisResult } from "./types";
 
 export const offlineProvider: LLMProvider = {
@@ -6,6 +7,12 @@ export const offlineProvider: LLMProvider = {
   displayName: "Offline fallback",
   isConfigured() {
     return true;
+  },
+  async plan(request) {
+    return {
+      provider: "offline",
+      plan: buildOfflineInvestigationPlan(request)
+    };
   },
   async synthesize(
     session: DebugSession,

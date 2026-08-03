@@ -1,4 +1,5 @@
 import { Capability, DebugSession, TaskEventLevel, TaskStatus } from "../types";
+import type { InvestigationPlan } from "../investigation-plan";
 
 export type EvidenceSummary = {
   agentCount: number;
@@ -47,6 +48,16 @@ export type SynthesisResult = {
   summary: string;
 };
 
+export type PlanningRequest = {
+  objective: string;
+  capabilities: readonly Capability[];
+};
+
+export type PlanningResult = {
+  provider: string;
+  plan: InvestigationPlan;
+};
+
 export type LLMProviderStatus = {
   id: string;
   displayName: string;
@@ -58,5 +69,6 @@ export type LLMProvider = {
   id: string;
   displayName: string;
   isConfigured(): boolean;
+  plan?(request: PlanningRequest): Promise<PlanningResult>;
   synthesize(session: DebugSession, evidence: EvidencePayload): Promise<SynthesisResult>;
 };

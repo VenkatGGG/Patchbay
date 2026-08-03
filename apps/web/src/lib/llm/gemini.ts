@@ -1,6 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
+import { buildOfflineInvestigationPlan, enforcePlanCapabilities, validateInvestigationPlan } from "../investigation-plan";
+import { redactString } from "../redaction";
 import { DebugSession } from "../types";
-import { EvidencePayload, LLMProvider, SynthesisResult } from "./types";
+import { EvidencePayload, LLMProvider, PlanningRequest, PlanningResult, SynthesisResult } from "./types";
 import { offlineProvider } from "./offline";
 
 type GeminiRestResponse = {
@@ -13,11 +15,54 @@ type GeminiRestResponse = {
   }>;
 };
 
+type GeminiContents = Array<{
+  role: "user";
+  parts: Array<{ text: string }>;
+}>;
+
 export const geminiProvider: LLMProvider = {
   id: "gemini",
   displayName: "Google Gemini",
   isConfigured() {
     return Boolean(process.env.GEMINI_API_KEY);
+  },
+  async plan(request: PlanningRequest): Promise<PlanningResult> {
+    const fallback = () => ({
+      provider: "gemini:offline",
+      plan: buildOfflineInvestigationPlan(request)
+    });
+    const apiKey = process.env.GEMINI_API_KEY;
+    const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+
+    if (!apiKey) {
+      return fallback();
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    try {
+      if (process.env.PATCHBAY_GEMINI_FORCE_FAILURE === "true") {
+        throw new Error("Forced Gemini planner failure");
+      }
+
+      const contents = plannerContents(request);
+      const response = process.env.GEMINI_API_BASE_URL?.trim()
+        ? { text: await generateWithGeminiRest(apiKey, model, contents) }
+        : await withTimeout(
+            ai.models.generateContent({ model, contents }),
+            geminiTimeoutMs()
+          );
+      const parsed = JSON.parse(response.text ?? "");
+      const plan = enforcePlanCapabilities(
+        validateInvestigationPlan(parsed),
+        request.capabilities
+      );
+      return { provider: `gemini:${model}`, plan };
+    } catch {
+      return {
+        provider: `gemini:${model}:offline-fallback`,
+        plan: buildOfflineInvestigationPlan(request)
+      };
+    }
   },
   async synthesize(
     session: DebugSession,
@@ -80,7 +125,7 @@ function geminiTimeoutMs() {
   return Math.min(value, 120_000);
 }
 
-function geminiContents(evidence: EvidencePayload) {
+function geminiContents(evidence: EvidencePayload): GeminiContents {
   return [
     {
       role: "user",
@@ -99,10 +144,46 @@ function geminiContents(evidence: EvidencePayload) {
   ];
 }
 
+function plannerContents(request: PlanningRequest): GeminiContents {
+  const redactedObjective = redactString(request.objective);
+  return [
+    {
+      role: "user",
+      parts: [
+        {
+          text: [
+            "You are Patchbay's read-only investigation planner.",
+            "Return JSON only. Do not use markdown fences.",
+            "Use only the allowed capabilities below.",
+            "Every node must have id, capability, params, dependsOn, and rationale.",
+            "The graph must be acyclic and dependencies must reference node ids.",
+            `Allowed capabilities: ${JSON.stringify(request.capabilities)}`,
+            `Objective: ${redactedObjective}`,
+            JSON.stringify({
+              version: 1,
+              title: "Read-only investigation",
+              objective: redactedObjective,
+              nodes: [
+                {
+                  id: "node_system_info",
+                  capability: "system.info",
+                  params: {},
+                  dependsOn: [],
+                  rationale: "Collect read-only host context"
+                }
+              ]
+            })
+          ].join("\n\n")
+        }
+      ]
+    }
+  ];
+}
+
 async function generateWithGeminiRest(
   apiKey: string,
   model: string,
-  contents: ReturnType<typeof geminiContents>
+  contents: GeminiContents
 ) {
   const apiBaseUrl = (process.env.GEMINI_API_BASE_URL ?? "").replace(/\/+$/u, "");
   const response = await withTimeout(

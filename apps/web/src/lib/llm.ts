@@ -1,3 +1,2 @@
-export { listLLMProviders, synthesizeSession } from "./llm/registry";
-export type { LLMProviderStatus, SynthesisResult } from "./llm/types";
-
+export { listLLMProviders, planInvestigation, synthesizeSession } from "./llm/registry";
+export type { LLMProviderStatus, PlanningResult, SynthesisResult } from "./llm/types";

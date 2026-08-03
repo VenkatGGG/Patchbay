@@ -2,7 +2,13 @@ import { ControlPlaneState, DebugSession } from "../types";
 import { buildEvidencePayload } from "./evidence";
 import { geminiProvider } from "./gemini";
 import { offlineProvider } from "./offline";
-import { LLMProvider, LLMProviderStatus, SynthesisResult } from "./types";
+import {
+  LLMProvider,
+  LLMProviderStatus,
+  PlanningRequest,
+  PlanningResult,
+  SynthesisResult
+} from "./types";
 
 const providers: LLMProvider[] = [geminiProvider, offlineProvider];
 
@@ -25,6 +31,16 @@ export async function synthesizeSession(
   return provider.synthesize(session, evidence);
 }
 
+export async function planInvestigation(
+  request: PlanningRequest
+): Promise<PlanningResult> {
+  const provider = selectProvider();
+  if (provider.plan) {
+    return provider.plan(request);
+  }
+  return offlineProvider.plan!(request);
+}
+
 function selectProvider() {
   const selected = selectedProviderId();
   const provider = providers.find((candidate) => candidate.id === selected);
@@ -43,4 +59,3 @@ function selectProvider() {
 function selectedProviderId() {
   return process.env.PATCHBAY_LLM_PROVIDER ?? "gemini";
 }
-

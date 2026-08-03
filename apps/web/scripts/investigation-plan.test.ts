@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildOfflineInvestigationPlan,
+  enforcePlanCapabilities,
   validateInvestigationPlan
 } from "../src/lib/investigation-plan.ts";
 
@@ -83,5 +84,16 @@ test("plan validation rejects unknown dependencies and cycles", () => {
         ]
       }),
     /cycle/i
+  );
+});
+
+test("server capability enforcement rejects plan nodes outside the allowed set", () => {
+  const plan = buildOfflineInvestigationPlan({
+    capabilities: ["system.info", "process.list"]
+  });
+
+  assert.throws(
+    () => enforcePlanCapabilities(plan, ["system.info"]),
+    /capability process\.list is not allowed/i
   );
 });

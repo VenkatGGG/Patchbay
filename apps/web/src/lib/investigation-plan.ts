@@ -89,6 +89,19 @@ export function validateInvestigationPlan(input: unknown): InvestigationPlan {
   return investigationPlanSchema.parse(input);
 }
 
+export function enforcePlanCapabilities(
+  plan: InvestigationPlan,
+  capabilities: readonly Capability[]
+): InvestigationPlan {
+  const allowed = new Set(capabilities);
+  for (const node of plan.nodes) {
+    if (!allowed.has(node.capability)) {
+      throw new Error(`Plan capability ${node.capability} is not allowed`);
+    }
+  }
+  return validateInvestigationPlan(plan);
+}
+
 export function buildOfflineInvestigationPlan(
   input: OfflinePlannerInput = {}
 ): InvestigationPlan {
