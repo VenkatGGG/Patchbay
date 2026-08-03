@@ -9,6 +9,8 @@ import {
   DebugSession,
   DiagnosticTask,
   Environment,
+  Investigation,
+  InvestigationNode,
   READ_ONLY_CAPABILITIES,
   Synthesis,
   TaskEvent,
@@ -17,6 +19,7 @@ import {
   TailscaleState,
   WorkloadPackMetadata
 } from "./types";
+import type { InvestigationPlan } from "./investigation-plan";
 
 const { Pool } = pg;
 
@@ -58,6 +61,11 @@ type AddTaskEventInput = {
   status?: TaskStatus;
   result?: unknown;
   error?: string;
+};
+
+type CreateInvestigationInput = {
+  sessionId: string;
+  plan: InvestigationPlan;
 };
 
 export class TaskAssignmentError extends Error {
@@ -104,6 +112,10 @@ export type PatchbayStore = {
   revokeAgent(agentId: string, actor?: string): Promise<Agent>;
   createSession(input: CreateSessionInput): Promise<DebugSession>;
   getSession(sessionId: string): Promise<DebugSession | undefined>;
+  createInvestigation(input: CreateInvestigationInput): Promise<{
+    investigation: Investigation;
+    nodes: InvestigationNode[];
+  }>;
   closeSession(sessionId: string, actor?: string): Promise<DebugSession>;
   createLatencyDiagnostic(sessionId: string): Promise<DiagnosticTask[]>;
   claimTasks(agentId: string): Promise<DiagnosticTask[]>;
@@ -132,6 +144,8 @@ class MemoryStore implements PatchbayStore {
   private tasks = new Map<string, DiagnosticTask>();
   private events = new Map<string, TaskEvent>();
   private syntheses = new Map<string, Synthesis>();
+  private investigations = new Map<string, Investigation>();
+  private investigationNodes = new Map<string, InvestigationNode>();
   private audit = new Map<string, AuditEvent>();
   private enrollmentInvitations = new Map<
     string,
@@ -164,6 +178,8 @@ class MemoryStore implements PatchbayStore {
       tasks: [...this.tasks.values()],
       events: [...this.events.values()],
       syntheses: [...this.syntheses.values()],
+      investigations: [...this.investigations.values()],
+      investigationNodes: [...this.investigationNodes.values()],
       audit: [...this.audit.values()]
     };
   }
@@ -304,6 +320,52 @@ class MemoryStore implements PatchbayStore {
   async getSession(sessionId: string): Promise<DebugSession | undefined> {
     this.expireSessions();
     return this.sessions.get(sessionId);
+  }
+
+  async createInvestigation(input: CreateInvestigationInput) {
+    const session = await this.getSession(input.sessionId);
+    if (!session) {
+      throw new Error(`Unknown session: ${input.sessionId}`);
+    }
+    if (session.status !== "active") {
+      throw new Error("Session is not active");
+    }
+
+    const createdAt = now();
+    const investigation: Investigation = {
+      id: makeId("inv"),
+      sessionId: input.sessionId,
+      title: input.plan.title,
+      objective: input.plan.objective,
+      status: "planned",
+      planVersion: input.plan.version,
+      createdAt,
+      updatedAt: createdAt
+    };
+    const nodes = input.plan.nodes.map(
+      (node): InvestigationNode => ({
+        id: makeId("inode"),
+        investigationId: investigation.id,
+        nodeKey: node.id,
+        capability: node.capability,
+        params: node.params,
+        dependsOn: node.dependsOn,
+        rationale: node.rationale,
+        status: "pending",
+        createdAt,
+        updatedAt: createdAt
+      })
+    );
+
+    this.investigations.set(investigation.id, investigation);
+    for (const node of nodes) {
+      this.investigationNodes.set(node.id, node);
+    }
+    this.addAudit("investigation.created", "operator", investigation.id, {
+      sessionId: investigation.sessionId,
+      nodeCount: nodes.length
+    });
+    return { investigation, nodes };
   }
 
   async closeSession(sessionId: string, actor = "operator"): Promise<DebugSession> {
@@ -664,6 +726,8 @@ class PostgresStore implements PatchbayStore {
       tasks,
       events,
       syntheses,
+      investigations,
+      investigationNodes,
       audit
     ] = await Promise.all([
       this.pool.query("SELECT * FROM environments ORDER BY created_at ASC"),
@@ -672,6 +736,8 @@ class PostgresStore implements PatchbayStore {
       this.pool.query("SELECT * FROM session_tasks ORDER BY created_at ASC"),
       this.pool.query("SELECT * FROM task_events ORDER BY created_at ASC"),
       this.pool.query("SELECT * FROM syntheses ORDER BY created_at ASC"),
+      this.pool.query("SELECT * FROM investigations ORDER BY created_at ASC"),
+      this.pool.query("SELECT * FROM investigation_nodes ORDER BY created_at ASC"),
       this.pool.query("SELECT * FROM audit_log ORDER BY created_at ASC")
     ]);
 
@@ -682,6 +748,8 @@ class PostgresStore implements PatchbayStore {
       tasks: tasks.rows.map(toTask),
       events: events.rows.map(toTaskEvent),
       syntheses: syntheses.rows.map(toSynthesis),
+      investigations: investigations.rows.map(toInvestigation),
+      investigationNodes: investigationNodes.rows.map(toInvestigationNode),
       audit: audit.rows.map(toAuditEvent)
     };
   }
@@ -931,6 +999,106 @@ class PostgresStore implements PatchbayStore {
       );
       await client.query("COMMIT");
       return toSession(closedResult.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async createInvestigation(input: CreateInvestigationInput) {
+    const session = await this.getSession(input.sessionId);
+    if (!session) {
+      throw new Error(`Unknown session: ${input.sessionId}`);
+    }
+    if (session.status !== "active") {
+      throw new Error("Session is not active");
+    }
+
+    const createdAt = now();
+    const investigation: Investigation = {
+      id: makeId("inv"),
+      sessionId: input.sessionId,
+      title: input.plan.title,
+      objective: input.plan.objective,
+      status: "planned",
+      planVersion: input.plan.version,
+      createdAt,
+      updatedAt: createdAt
+    };
+    const nodes = input.plan.nodes.map(
+      (node): InvestigationNode => ({
+        id: makeId("inode"),
+        investigationId: investigation.id,
+        nodeKey: node.id,
+        capability: node.capability,
+        params: node.params,
+        dependsOn: node.dependsOn,
+        rationale: node.rationale,
+        status: "pending",
+        createdAt,
+        updatedAt: createdAt
+      })
+    );
+
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `
+          INSERT INTO investigations (
+            id, session_id, title, objective, status, plan_version, created_at, updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `,
+        [
+          investigation.id,
+          investigation.sessionId,
+          investigation.title,
+          investigation.objective,
+          investigation.status,
+          investigation.planVersion,
+          investigation.createdAt,
+          investigation.updatedAt
+        ]
+      );
+      for (const node of nodes) {
+        await client.query(
+          `
+            INSERT INTO investigation_nodes (
+              id, investigation_id, node_key, capability, params, depends_on,
+              rationale, status, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          `,
+          [
+            node.id,
+            node.investigationId,
+            node.nodeKey,
+            node.capability,
+            JSON.stringify(node.params),
+            node.dependsOn,
+            node.rationale,
+            node.status,
+            node.createdAt,
+            node.updatedAt
+          ]
+        );
+      }
+      await client.query(
+        `
+          INSERT INTO audit_log (id, action, actor, target, metadata)
+          VALUES ($1, 'investigation.created', 'operator', $2, $3)
+        `,
+        [
+          makeId("aud"),
+          investigation.id,
+          JSON.stringify({ sessionId: investigation.sessionId, nodeCount: nodes.length })
+        ]
+      );
+      await client.query("COMMIT");
+      return { investigation, nodes };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -1563,6 +1731,32 @@ const toSynthesis = (row: Record<string, unknown>): Synthesis => ({
   provider: stringValue(row.provider),
   summary: stringValue(row.summary),
   createdAt: isoValue(row.created_at)
+});
+
+const toInvestigation = (row: Record<string, unknown>): Investigation => ({
+  id: stringValue(row.id),
+  sessionId: stringValue(row.session_id),
+  title: stringValue(row.title),
+  objective: stringValue(row.objective),
+  status: stringValue(row.status) as Investigation["status"],
+  planVersion: numberValue(row.plan_version, 1),
+  createdAt: isoValue(row.created_at),
+  updatedAt: isoValue(row.updated_at)
+});
+
+const toInvestigationNode = (row: Record<string, unknown>): InvestigationNode => ({
+  id: stringValue(row.id),
+  investigationId: stringValue(row.investigation_id),
+  nodeKey: stringValue(row.node_key),
+  capability: stringValue(row.capability) as Capability,
+  params: jsonValue<Record<string, unknown>>(row.params, {}),
+  dependsOn: stringArray(row.depends_on),
+  rationale: stringValue(row.rationale),
+  status: stringValue(row.status) as InvestigationNode["status"],
+  taskId: optionalStringValue(row.task_id),
+  error: row.error === null ? undefined : optionalStringValue(row.error),
+  createdAt: isoValue(row.created_at),
+  updatedAt: isoValue(row.updated_at)
 });
 
 const toAuditEvent = (row: Record<string, unknown>): AuditEvent => ({

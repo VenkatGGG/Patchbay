@@ -24,6 +24,9 @@ const expectedConstraints = [
   "chk_sessions_mode",
   "chk_sessions_status",
   "chk_sessions_allowed_capabilities",
+  "chk_investigations_status",
+  "chk_investigation_nodes_capability",
+  "chk_investigation_nodes_status",
   "chk_session_tasks_capability",
   "chk_session_tasks_status",
   "chk_task_events_level"

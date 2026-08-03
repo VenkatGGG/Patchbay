@@ -28,6 +28,8 @@ const emptyState: ControlPlaneState = {
   tasks: [],
   events: [],
   syntheses: [],
+  investigations: [],
+  investigationNodes: [],
   audit: []
 };
 

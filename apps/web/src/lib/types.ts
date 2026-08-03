@@ -31,6 +31,14 @@ export type AgentStatus = "online" | "idle" | "offline";
 export type SessionStatus = "active" | "expired" | "closed";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "denied";
 export type TaskEventLevel = "info" | "warning" | "error";
+export type InvestigationStatus = "planned" | "running" | "completed" | "failed";
+export type InvestigationNodeStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "blocked";
 
 export type Environment = {
   id: string;
@@ -119,6 +127,32 @@ export type Synthesis = {
   createdAt: string;
 };
 
+export type Investigation = {
+  id: string;
+  sessionId: string;
+  title: string;
+  objective: string;
+  status: InvestigationStatus;
+  planVersion: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InvestigationNode = {
+  id: string;
+  investigationId: string;
+  nodeKey: string;
+  capability: Capability;
+  params: Record<string, unknown>;
+  dependsOn: string[];
+  rationale: string;
+  status: InvestigationNodeStatus;
+  taskId?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ControlPlaneState = {
   environments: Environment[];
   agents: Agent[];
@@ -126,5 +160,7 @@ export type ControlPlaneState = {
   tasks: DiagnosticTask[];
   events: TaskEvent[];
   syntheses: Synthesis[];
+  investigations: Investigation[];
+  investigationNodes: InvestigationNode[];
   audit: AuditEvent[];
 };
