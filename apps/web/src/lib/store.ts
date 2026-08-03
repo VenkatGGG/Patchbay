@@ -5,6 +5,7 @@ import {
   readyInvestigationNodes
 } from "./investigation-dag";
 import { defaultCapabilityParams } from "./investigation-plan";
+import { compactEvidenceValue, draftFinding } from "./investigation-evidence";
 import { artifactRetentionCutoffMs } from "./retention";
 import {
   Agent,
@@ -14,6 +15,8 @@ import {
   DebugSession,
   DiagnosticTask,
   Environment,
+  EvidenceArtifact,
+  Finding,
   Investigation,
   InvestigationNode,
   READ_ONLY_CAPABILITIES,
@@ -155,6 +158,8 @@ class MemoryStore implements PatchbayStore {
   private syntheses = new Map<string, Synthesis>();
   private investigations = new Map<string, Investigation>();
   private investigationNodes = new Map<string, InvestigationNode>();
+  private evidence = new Map<string, EvidenceArtifact>();
+  private findings = new Map<string, Finding>();
   private audit = new Map<string, AuditEvent>();
   private enrollmentInvitations = new Map<
     string,
@@ -189,6 +194,8 @@ class MemoryStore implements PatchbayStore {
       syntheses: [...this.syntheses.values()],
       investigations: [...this.investigations.values()],
       investigationNodes: [...this.investigationNodes.values()],
+      evidence: [...this.evidence.values()],
+      findings: [...this.findings.values()],
       audit: [...this.audit.values()]
     };
   }
@@ -644,7 +651,49 @@ class MemoryStore implements PatchbayStore {
     const nextTask = nextTaskState(task, event.createdAt, input);
     this.tasks.set(task.id, nextTask);
     this.advanceInvestigationAfterTask(nextTask);
+    this.recordInvestigationEvidence(nextTask);
     return event;
+  }
+
+  private recordInvestigationEvidence(task: DiagnosticTask) {
+    if (
+      !task.investigationNodeId ||
+      (task.status !== "completed" && task.status !== "failed")
+    ) {
+      return;
+    }
+    const node = this.investigationNodes.get(task.investigationNodeId);
+    if (!node) return;
+
+    const artifact: EvidenceArtifact = {
+      id: makeId("evidence"),
+      investigationId: node.investigationId,
+      nodeId: node.id,
+      taskId: task.id,
+      kind: task.status === "completed" ? "task.result" : "task.failure",
+      payload: compactEvidenceValue(
+        task.status === "completed" ? task.result : { error: task.error }
+      ),
+      createdAt: now()
+    };
+    this.evidence.set(artifact.id, artifact);
+
+    const result =
+      task.result && typeof task.result === "object" && !Array.isArray(task.result)
+        ? (task.result as Record<string, unknown>)
+        : undefined;
+    const findingDraft = draftFinding(task.capability, task.status, result, task.error);
+    const finding: Finding = {
+      id: makeId("finding"),
+      investigationId: node.investigationId,
+      nodeId: node.id,
+      title: findingDraft.title,
+      severity: findingDraft.severity,
+      summary: findingDraft.summary,
+      evidenceIds: [artifact.id],
+      createdAt: artifact.createdAt
+    };
+    this.findings.set(finding.id, finding);
   }
 
   private findTaskEventByIdempotencyKey(
@@ -866,6 +915,8 @@ class PostgresStore implements PatchbayStore {
       syntheses,
       investigations,
       investigationNodes,
+      evidence,
+      findings,
       audit
     ] = await Promise.all([
       this.pool.query("SELECT * FROM environments ORDER BY created_at ASC"),
@@ -876,6 +927,8 @@ class PostgresStore implements PatchbayStore {
       this.pool.query("SELECT * FROM syntheses ORDER BY created_at ASC"),
       this.pool.query("SELECT * FROM investigations ORDER BY created_at ASC"),
       this.pool.query("SELECT * FROM investigation_nodes ORDER BY created_at ASC"),
+      this.pool.query("SELECT * FROM evidence_artifacts ORDER BY created_at ASC"),
+      this.pool.query("SELECT * FROM findings ORDER BY created_at ASC"),
       this.pool.query("SELECT * FROM audit_log ORDER BY created_at ASC")
     ]);
 
@@ -888,6 +941,8 @@ class PostgresStore implements PatchbayStore {
       syntheses: syntheses.rows.map(toSynthesis),
       investigations: investigations.rows.map(toInvestigation),
       investigationNodes: investigationNodes.rows.map(toInvestigationNode),
+      evidence: evidence.rows.map(toEvidenceArtifact),
+      findings: findings.rows.map(toFinding),
       audit: audit.rows.map(toAuditEvent)
     };
   }
@@ -1532,6 +1587,7 @@ class PostgresStore implements PatchbayStore {
         ]
       );
 
+      await this.recordPostgresEvidence(client, nextTask);
       await this.advancePostgresInvestigation(client, nextTask);
       await client.query("COMMIT");
       return event;
@@ -1681,6 +1737,68 @@ class PostgresStore implements PatchbayStore {
     await client.query(
       "UPDATE investigations SET status = $2, updated_at = $3 WHERE id = $1",
       [node.investigationId, investigationStatus(finalNodesResult.rows.map(toInvestigationNode)), now()]
+    );
+  }
+
+  private async recordPostgresEvidence(client: pg.PoolClient, task: DiagnosticTask) {
+    if (
+      !task.investigationNodeId ||
+      (task.status !== "completed" && task.status !== "failed")
+    ) {
+      return;
+    }
+
+    const nodeResult = await client.query(
+      "SELECT * FROM investigation_nodes WHERE id = $1",
+      [task.investigationNodeId]
+    );
+    if (nodeResult.rows.length === 0) return;
+    const node = toInvestigationNode(nodeResult.rows[0]);
+    const evidenceId = makeId("evidence");
+    const payload = compactEvidenceValue(
+      task.status === "completed" ? task.result : { error: task.error }
+    );
+    const createdAt = now();
+    await client.query(
+      `
+        INSERT INTO evidence_artifacts (
+          id, investigation_id, node_id, task_id, kind, payload, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        evidenceId,
+        node.investigationId,
+        node.id,
+        task.id,
+        task.status === "completed" ? "task.result" : "task.failure",
+        JSON.stringify(payload),
+        createdAt
+      ]
+    );
+
+    const result =
+      task.result && typeof task.result === "object" && !Array.isArray(task.result)
+        ? (task.result as Record<string, unknown>)
+        : undefined;
+    const findingDraft = draftFinding(task.capability, task.status, result, task.error);
+    await client.query(
+      `
+        INSERT INTO findings (
+          id, investigation_id, node_id, title, severity, summary, evidence_ids, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        makeId("finding"),
+        node.investigationId,
+        node.id,
+        findingDraft.title,
+        findingDraft.severity,
+        findingDraft.summary,
+        [evidenceId],
+        createdAt
+      ]
     );
   }
 
@@ -2142,6 +2260,27 @@ const toInvestigationNode = (row: Record<string, unknown>): InvestigationNode =>
   error: row.error === null ? undefined : optionalStringValue(row.error),
   createdAt: isoValue(row.created_at),
   updatedAt: isoValue(row.updated_at)
+});
+
+const toEvidenceArtifact = (row: Record<string, unknown>): EvidenceArtifact => ({
+  id: stringValue(row.id),
+  investigationId: stringValue(row.investigation_id),
+  nodeId: stringValue(row.node_id),
+  taskId: stringValue(row.task_id),
+  kind: stringValue(row.kind),
+  payload: jsonValue<unknown>(row.payload, null),
+  createdAt: isoValue(row.created_at)
+});
+
+const toFinding = (row: Record<string, unknown>): Finding => ({
+  id: stringValue(row.id),
+  investigationId: stringValue(row.investigation_id),
+  nodeId: stringValue(row.node_id),
+  title: stringValue(row.title),
+  severity: stringValue(row.severity) as Finding["severity"],
+  summary: stringValue(row.summary),
+  evidenceIds: stringArray(row.evidence_ids),
+  createdAt: isoValue(row.created_at)
 });
 
 const toAuditEvent = (row: Record<string, unknown>): AuditEvent => ({

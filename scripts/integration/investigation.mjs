@@ -111,6 +111,8 @@ async function main() {
     3,
     "expected persisted plan nodes in state"
   );
+  assert.equal(state.evidence.length, 1, "expected completed root evidence artifact");
+  assert.equal(state.findings.length, 1, "expected structured root finding");
 
   const systemTask = state.tasks.find(
     (task) => task.investigationNodeId && task.capability === "system.info" && task.status === "queued"
@@ -144,6 +146,8 @@ async function main() {
     (node) => node.investigationId === finalInvestigation.id
   );
   assert.equal(finalNodes.find((node) => node.nodeKey === "node_process_list").status, "blocked");
+  assert.equal(state.evidence.length, 3, "expected evidence lineage for each task attempt");
+  assert.equal(state.findings.length, 3, "expected one finding per task attempt");
 
   console.log(JSON.stringify({ ok: true, nodeCount: finalNodes.length, retryCount: 1 }, null, 2));
 }

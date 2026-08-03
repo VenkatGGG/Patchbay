@@ -86,6 +86,27 @@ CREATE TABLE IF NOT EXISTS investigation_nodes (
   UNIQUE(investigation_id, node_key)
 );
 
+CREATE TABLE IF NOT EXISTS evidence_artifacts (
+  id TEXT PRIMARY KEY,
+  investigation_id TEXT NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL REFERENCES investigation_nodes(id) ON DELETE CASCADE,
+  task_id TEXT NOT NULL REFERENCES session_tasks(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS findings (
+  id TEXT PRIMARY KEY,
+  investigation_id TEXT NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL REFERENCES investigation_nodes(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  evidence_ids TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 ALTER TABLE session_tasks
   ADD COLUMN IF NOT EXISTS investigation_node_id TEXT
     REFERENCES investigation_nodes(id) ON DELETE SET NULL;
@@ -124,6 +145,8 @@ CREATE INDEX IF NOT EXISTS idx_enrollment_invitations_environment ON enrollment_
 CREATE INDEX IF NOT EXISTS idx_sessions_environment_id ON sessions(environment_id);
 CREATE INDEX IF NOT EXISTS idx_investigations_session_id ON investigations(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_investigation_nodes_investigation_id ON investigation_nodes(investigation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_evidence_artifacts_investigation_id ON evidence_artifacts(investigation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_findings_investigation_id ON findings(investigation_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_session_id ON session_tasks(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_agent_status ON session_tasks(agent_id, status);
 CREATE INDEX IF NOT EXISTS idx_session_tasks_queued_capability
@@ -295,6 +318,16 @@ BEGIN
     ALTER TABLE investigation_nodes
       ADD CONSTRAINT chk_investigation_nodes_status
       CHECK (status IN ('pending', 'queued', 'running', 'completed', 'failed', 'blocked'));
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_findings_severity'
+      AND conrelid = 'findings'::regclass
+  ) THEN
+    ALTER TABLE findings
+      ADD CONSTRAINT chk_findings_severity
+      CHECK (severity IN ('info', 'low', 'medium', 'high', 'critical'));
   END IF;
 
   IF NOT EXISTS (

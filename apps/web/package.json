@@ -10,6 +10,7 @@
     "test:auth-readiness": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/auth-readiness.test.mjs",
     "test:investigation-plan": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/investigation-plan.test.ts",
     "test:investigation-dag": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/investigation-dag.test.ts",
+    "test:investigation-evidence": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test scripts/investigation-evidence.test.ts",
     "test:migrations": "node --test scripts/migrations.test.mjs",
     "typecheck": "tsc --noEmit"
   },

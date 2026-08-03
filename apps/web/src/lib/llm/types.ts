@@ -1,4 +1,11 @@
-import { Capability, DebugSession, TaskEventLevel, TaskStatus } from "../types";
+import {
+  Capability,
+  DebugSession,
+  EvidenceArtifact,
+  Finding,
+  TaskEventLevel,
+  TaskStatus
+} from "../types";
 import type { InvestigationPlan } from "../investigation-plan";
 
 export type EvidenceSummary = {
@@ -7,6 +14,8 @@ export type EvidenceSummary = {
   completedTaskCount: number;
   failedTaskCount: number;
   eventCount: number;
+  evidenceCount: number;
+  findingCount: number;
   capabilities: Capability[];
 };
 
@@ -41,6 +50,8 @@ export type EvidencePayload = {
   agents: EvidenceAgent[];
   tasks: EvidenceTask[];
   events: EvidenceEvent[];
+  evidence: EvidenceArtifact[];
+  findings: Finding[];
 };
 
 export type SynthesisResult = {

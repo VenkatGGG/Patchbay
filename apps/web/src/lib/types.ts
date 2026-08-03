@@ -39,6 +39,7 @@ export type InvestigationNodeStatus =
   | "completed"
   | "failed"
   | "blocked";
+export type FindingSeverity = "info" | "low" | "medium" | "high" | "critical";
 
 export type Environment = {
   id: string;
@@ -156,6 +157,27 @@ export type InvestigationNode = {
   updatedAt: string;
 };
 
+export type EvidenceArtifact = {
+  id: string;
+  investigationId: string;
+  nodeId: string;
+  taskId: string;
+  kind: string;
+  payload: unknown;
+  createdAt: string;
+};
+
+export type Finding = {
+  id: string;
+  investigationId: string;
+  nodeId: string;
+  title: string;
+  severity: FindingSeverity;
+  summary: string;
+  evidenceIds: string[];
+  createdAt: string;
+};
+
 export type ControlPlaneState = {
   environments: Environment[];
   agents: Agent[];
@@ -165,5 +187,7 @@ export type ControlPlaneState = {
   syntheses: Synthesis[];
   investigations: Investigation[];
   investigationNodes: InvestigationNode[];
+  evidence: EvidenceArtifact[];
+  findings: Finding[];
   audit: AuditEvent[];
 };

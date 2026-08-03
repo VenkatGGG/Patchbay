@@ -8,6 +8,12 @@ export function buildEvidencePayload(
 ): EvidencePayload {
   const tasks = state.tasks.filter((task) => task.sessionId === sessionId);
   const events = state.events.filter((event) => event.sessionId === sessionId);
+  const sessionInvestigations = state.investigations.filter(
+    (investigation) => investigation.sessionId === sessionId
+  );
+  const investigationIds = new Set(sessionInvestigations.map((investigation) => investigation.id));
+  const evidence = state.evidence.filter((artifact) => investigationIds.has(artifact.investigationId));
+  const findings = state.findings.filter((finding) => investigationIds.has(finding.investigationId));
   const agents = state.agents.filter((agent) =>
     tasks.some((task) => task.agentId === agent.id)
   );
@@ -21,6 +27,8 @@ export function buildEvidencePayload(
       completedTaskCount: tasks.filter((task) => task.status === "completed").length,
       failedTaskCount: tasks.filter((task) => task.status === "failed").length,
       eventCount: events.length,
+      evidenceCount: evidence.length,
+      findingCount: findings.length,
       capabilities
     },
     agents: agents.map((agent) => ({
@@ -45,7 +53,12 @@ export function buildEvidencePayload(
       level: event.level,
       message: event.message,
       payload: compact(event.payload)
-    }))
+    })),
+    evidence: evidence.slice(-50).map((artifact) => ({
+      ...artifact,
+      payload: compact(artifact.payload)
+    })),
+    findings: findings.slice(-50)
   };
 }
 

@@ -29,7 +29,7 @@ export const offlineProvider: LLMProvider = {
         "",
         "Evidence",
         serialized.length > 2
-          ? `Read-only evidence is available for: ${evidence.summary.capabilities.join(", ")}.`
+          ? `Read-only evidence includes ${evidence.summary.evidenceCount} artifacts and ${evidence.summary.findingCount} structured findings for: ${evidence.summary.capabilities.join(", ")}.`
           : "No agent evidence has been collected yet.",
         "",
         "Likely Causes",

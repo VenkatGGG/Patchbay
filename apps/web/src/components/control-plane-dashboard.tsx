@@ -30,6 +30,8 @@ const emptyState: ControlPlaneState = {
   syntheses: [],
   investigations: [],
   investigationNodes: [],
+  evidence: [],
+  findings: [],
   audit: []
 };
 
