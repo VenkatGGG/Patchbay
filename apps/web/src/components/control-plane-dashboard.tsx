@@ -104,6 +104,9 @@ export function ControlPlaneDashboard({
   const [state, setState] = useState<ControlPlaneState>(emptyState);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [sessionName, setSessionName] = useState("checkout latency investigation");
+  const [investigationObjective, setInvestigationObjective] = useState(
+    "Investigate the active incident"
+  );
   const [enrollmentTtlMinutes, setEnrollmentTtlMinutes] = useState("60");
   const [enrollmentToken, setEnrollmentToken] = useState<EnrollmentTokenState | null>(
     null
@@ -114,6 +117,7 @@ export function ControlPlaneDashboard({
     | "session"
     | "enrollment"
     | "diagnostic"
+    | "investigation"
     | "synthesis"
     | "report"
     | "close"
@@ -145,6 +149,21 @@ export function ControlPlaneDashboard({
   const selectedCompletedTasks = selectedTasks.filter(
     (task) => task.status === "completed" && task.result !== undefined
   );
+  const selectedInvestigations = selectedSession
+    ? state.investigations.filter((investigation) => investigation.sessionId === selectedSession.id)
+    : [];
+  const selectedInvestigation = selectedInvestigations.at(-1);
+  const selectedInvestigationNodes = selectedInvestigation
+    ? state.investigationNodes.filter(
+        (node) => node.investigationId === selectedInvestigation.id
+      )
+    : [];
+  const selectedFindings = selectedInvestigation
+    ? state.findings.filter((finding) => finding.investigationId === selectedInvestigation.id)
+    : [];
+  const selectedEvidence = selectedInvestigation
+    ? state.evidence.filter((artifact) => artifact.investigationId === selectedInvestigation.id)
+    : [];
   const selectedSessionIsActive = selectedSession?.status === "active";
   const latestSynthesis = selectedSession
     ? state.syntheses
@@ -285,6 +304,32 @@ export function ControlPlaneDashboard({
       }
       const tasks = (await response.json()) as DiagnosticTask[];
       setNotice(`Queued ${tasks.length} read-only diagnostics`);
+      setError("");
+      await refresh();
+    } catch (caught) {
+      setError(messageFrom(caught));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function createInvestigation() {
+    if (!selectedSessionIsActive || !investigationObjective.trim()) return;
+    setBusyAction("investigation");
+    try {
+      const response = await fetchControlPlane(
+        `/api/sessions/${selectedSession.id}/investigations`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ objective: investigationObjective.trim() })
+        }
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `Investigation planning failed with ${response.status}`);
+      }
+      setNotice("Started a dependency-aware investigation plan");
       setError("");
       await refresh();
     } catch (caught) {
@@ -463,6 +508,15 @@ export function ControlPlaneDashboard({
             >
               <Activity size={16} />
               {busyAction === "diagnostic" ? "Queueing" : "Run Latency Diagnostic"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={createInvestigation}
+              disabled={!selectedSessionIsActive || busyAction !== null}
+            >
+              <Network size={16} />
+              {busyAction === "investigation" ? "Planning" : "Plan Investigation"}
             </button>
             <button
               className="button"
@@ -690,6 +744,65 @@ export function ControlPlaneDashboard({
             </Panel>
 
             <Panel
+              icon={<Network size={17} />}
+              title="Investigation Plan"
+              subtitle={selectedInvestigation?.status ?? "No plan started"}
+            >
+              <div className="investigation-control">
+                <div className="form-row">
+                  <input
+                    className="input"
+                    value={investigationObjective}
+                    onChange={(event) => setInvestigationObjective(event.target.value)}
+                    aria-label="Investigation objective"
+                    placeholder="Describe the incident objective"
+                  />
+                  <button
+                    className="button"
+                    type="button"
+                    onClick={createInvestigation}
+                    disabled={
+                      busyAction !== null ||
+                      !selectedSessionIsActive ||
+                      !investigationObjective.trim()
+                    }
+                  >
+                    {busyAction === "investigation" ? "Planning" : "Start Plan"}
+                  </button>
+                </div>
+                {selectedInvestigation ? (
+                  <div className="plan-list">
+                    <div className="plan-summary">
+                      <strong>{selectedInvestigation.title}</strong>
+                      <span>
+                        {selectedInvestigationNodes.filter((node) => node.status === "completed").length}/
+                        {selectedInvestigationNodes.length} nodes complete
+                      </span>
+                    </div>
+                    {selectedInvestigationNodes.map((node) => (
+                      <div className="plan-node" key={node.id}>
+                        <div>
+                          <strong className="mono">{node.capability}</strong>
+                          <span>
+                            {node.dependsOn.length > 0
+                              ? `After ${node.dependsOn.join(", ")}`
+                              : "Ready from start"}
+                          </span>
+                        </div>
+                        <div className="plan-node-meta">
+                          {node.attempts > 0 && <span className="mono">try {node.attempts}/{node.maxAttempts}</span>}
+                          <StatusPill value={node.status} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty">Start a plan to coordinate dependent diagnostics.</div>
+                )}
+              </div>
+            </Panel>
+
+            <Panel
               icon={<Boxes size={17} />}
               title="Agents"
               subtitle="Environment-local diagnostic workers"
@@ -722,11 +835,13 @@ export function ControlPlaneDashboard({
                             <div className="muted-line">
                               {agent.capabilities.slice(0, 3).join(", ")}
                             </div>
+                            <div className="muted-line">{agent.packs.length} packs</div>
                           </td>
                           <td>
-                            {agent.tailscale.enabled
-                              ? agent.tailscale.authKeyPreview ?? "enabled"
-                              : "local dev"}
+                            <strong>{agent.tailscale.enabled ? "Tailscale" : "Local"}</strong>
+                            <div className="muted-line">
+                              Lease {new Date(agent.leaseExpiresAt).toLocaleTimeString()}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -766,6 +881,29 @@ export function ControlPlaneDashboard({
                     </tbody>
                   </table>
                 </TableViewport>
+              )}
+            </Panel>
+
+            <Panel
+              icon={<ShieldAlert size={17} />}
+              title="Findings & Evidence"
+              subtitle={`${selectedFindings.length} findings · ${selectedEvidence.length} artifacts`}
+            >
+              {selectedFindings.length === 0 ? (
+                <div className="empty">No structured findings yet.</div>
+              ) : (
+                <div className="finding-list">
+                  {selectedFindings.map((finding) => (
+                    <div className="finding-item" key={finding.id}>
+                      <div className="finding-heading">
+                        <strong>{finding.title}</strong>
+                        <StatusPill value={finding.severity} />
+                      </div>
+                      <p>{finding.summary}</p>
+                      <span className="mono">{finding.evidenceIds.length} evidence reference(s)</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </Panel>
           </div>

@@ -590,6 +590,86 @@ button {
   font-size: 12px;
 }
 
+.investigation-control,
+.plan-list,
+.finding-list {
+  display: grid;
+  gap: 10px;
+}
+
+.plan-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.plan-summary strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.plan-node,
+.finding-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-left: 3px solid var(--border);
+  padding: 9px 10px;
+  background: #fbfcf9;
+}
+
+.plan-node > div:first-child,
+.finding-item {
+  min-width: 0;
+}
+
+.plan-node > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.plan-node > div:first-child span,
+.plan-node-meta,
+.finding-item .mono {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.plan-node-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  text-align: right;
+}
+
+.finding-item {
+  display: grid;
+  gap: 6px;
+}
+
+.finding-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.finding-heading strong {
+  font-size: 13px;
+}
+
+.finding-item p {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .input {
   min-height: 38px;
   width: 100%;
