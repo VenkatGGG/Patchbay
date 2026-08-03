@@ -151,7 +151,11 @@ pnpm check
 - Task timeout smoke test for stale running diagnostics.
 - Artifact retention smoke test for old diagnostic payloads, events, and
   syntheses.
+- Investigation plan, DAG retry, evidence lineage, and two-agent orchestration
+  smoke tests.
 - Offline Gemini fallback smoke test.
+- Fake Gemini planning smoke test with strict JSON validation and capability
+  enforcement.
 - Fake Gemini synthesis smoke test that verifies provider success, request
   shape, and redacted evidence without calling the real Gemini API.
 - Fake Tailscale OAuth/key-minting smoke test that verifies tagged, ephemeral,
