@@ -33,8 +33,10 @@ Remaining verification or product follow-up:
   checks pass locally. The machine used its cached PostgreSQL 16 Alpine image
   under the Compose `postgres:18-alpine` tag because the 18 image pull stalled;
   CI remains the exact PostgreSQL 18 gate.
-- Run live Gemini and Tailscale validations only with rotated credentials in an
-  external secret store. The repository contains fake-provider tests for both.
+- Live Gemini and Tailscale smoke validations pass from the ignored local secret
+  envelope. Rotate those credentials after this session because they were
+  previously pasted into chat. The repository contains fake-provider tests for
+  repeatable CI coverage.
 - Future product work: OAuth setup UI, direct Tailscale device removal hooks,
   broader workload packs, multi-tenant identity, and controlled remediation.
 

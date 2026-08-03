@@ -20,8 +20,9 @@ and recovery runbooks.
 The local live PostgreSQL gate requires a running Docker daemon and now passes
 for schema, integration, timeout, and retention checks. CI runs the same checks
 against the exact PostgreSQL 18 image plus Compose and production-image checks.
-Live Gemini and Tailscale calls are intentionally manual validations using
-credentials supplied through an external secret store.
+Live Gemini and Tailscale smoke validations also pass from the ignored local
+secret envelope. Rotate those credentials after this session because they were
+previously pasted into chat.
 
 ## Milestone 1: Open Diagnostic Core
 
