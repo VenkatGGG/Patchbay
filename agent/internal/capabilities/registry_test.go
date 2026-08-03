@@ -117,6 +117,25 @@ func TestWorkloadDiscoverReturnsHostWorkload(t *testing.T) {
 	}
 }
 
+func TestHostCommandPayloadReportsUnavailableToolsWithoutFailingTheTask(t *testing.T) {
+	payload := hostCommandPayload(
+		context.Background(),
+		"process.list",
+		"patchbay-command-that-does-not-exist",
+		5,
+	)
+
+	if payload["available"] != false {
+		t.Fatalf("expected unavailable command result, got %v", payload)
+	}
+	if payload["tool"] != "patchbay-command-that-does-not-exist" {
+		t.Fatalf("expected missing tool name, got %v", payload["tool"])
+	}
+	if payload["notice"] == "" {
+		t.Fatalf("expected unavailable notice, got %v", payload)
+	}
+}
+
 func TestAWSMetadataProbe(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {

@@ -230,35 +230,27 @@ func systemInfo(_ context.Context, _ map[string]any) (any, error) {
 
 func processList(ctx context.Context, params map[string]any) (any, error) {
 	limit := intParam(params, "limit", 40)
-	output, err := runReadOnlyCommand(ctx, "ps", "-axo", "pid,comm,pcpu,pmem")
-	if err != nil {
-		return nil, err
-	}
-	return linesPayload(output, limit), nil
+	return hostCommandPayload(ctx, "process.list", "ps", limit, "-axo", "pid,comm,pcpu,pmem"), nil
 }
 
 func diskUsage(ctx context.Context, _ map[string]any) (any, error) {
-	output, err := runReadOnlyCommand(ctx, "df", "-h")
-	if err != nil {
-		return nil, err
-	}
-	return linesPayload(output, 80), nil
+	return hostCommandPayload(ctx, "disk.usage", "df", 80, "-h"), nil
 }
 
 func networkConnections(ctx context.Context, params map[string]any) (any, error) {
 	limit := intParam(params, "limit", 60)
-	if _, err := exec.LookPath("lsof"); err == nil {
-		output, runErr := runReadOnlyCommand(ctx, "lsof", "-nP", "-iTCP", "-sTCP:ESTABLISHED")
-		if runErr == nil {
-			return linesPayload(output, limit), nil
+	if commandExists("lsof") {
+		result := hostCommandPayload(ctx, "network.connections", "lsof", limit, "-nP", "-iTCP", "-sTCP:ESTABLISHED")
+		if result["available"] == true {
+			return result, nil
 		}
 	}
 
-	output, err := runReadOnlyCommand(ctx, "netstat", "-an")
-	if err != nil {
-		return nil, err
+	if commandExists("netstat") {
+		return hostCommandPayload(ctx, "network.connections", "netstat", limit, "-an"), nil
 	}
-	return linesPayload(output, limit), nil
+
+	return unavailableToolResult("network.connections", "lsof or netstat", "no supported network inspection tool is installed"), nil
 }
 
 func logsSearch(_ context.Context, params map[string]any) (any, error) {
@@ -298,7 +290,7 @@ func logsSearch(_ context.Context, params map[string]any) (any, error) {
 		}
 	}
 
-	return map[string]any{"matches": matches}, nil
+	return map[string]any{"available": true, "matches": matches}, nil
 }
 
 func runReadOnlyCommand(ctx context.Context, name string, args ...string) (string, error) {
@@ -308,6 +300,39 @@ func runReadOnlyCommand(ctx context.Context, name string, args ...string) (strin
 		return "", fmt.Errorf("%s failed: %w", name, err)
 	}
 	return Redact(string(output)), nil
+}
+
+func hostCommandPayload(ctx context.Context, capability string, name string, limit int, args ...string) map[string]any {
+	if !commandExists(name) {
+		return unavailableToolResult(capability, name, fmt.Sprintf("%s CLI not found", name))
+	}
+
+	output, err := runReadOnlyCommand(ctx, name, args...)
+	if err != nil {
+		return map[string]any{
+			"available":  false,
+			"capability": capability,
+			"tool":       name,
+			"notice":     "read-only command could not collect data",
+			"error":      err.Error(),
+			"output":     linesPayload(output, limit),
+		}
+	}
+
+	lines := linesPayload(output, limit)
+	lines["available"] = true
+	lines["capability"] = capability
+	lines["tool"] = name
+	return lines
+}
+
+func unavailableToolResult(capability string, tool string, notice string) map[string]any {
+	return map[string]any{
+		"available":  false,
+		"capability": capability,
+		"tool":       tool,
+		"notice":     notice,
+	}
 }
 
 func linesPayload(output string, limit int) map[string]any {
