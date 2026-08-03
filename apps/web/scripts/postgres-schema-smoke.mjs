@@ -20,6 +20,7 @@ const expectedConstraints = [
   "chk_agents_status",
   "chk_agents_capabilities",
   "chk_agents_tailscale_object",
+  "chk_agents_capability_packs_array",
   "chk_sessions_mode",
   "chk_sessions_status",
   "chk_sessions_allowed_capabilities",
@@ -108,11 +109,30 @@ try {
         version,
         status,
         capabilities,
+        capability_packs,
         tailscale
       )
-      VALUES ($1, $2, 'bad-tailscale-agent', 'test', 'online', $3, $4)
+      VALUES ($1, $2, 'bad-tailscale-agent', 'test', 'online', $3, $4, $5)
     `,
-    [`agt_bad_tailscale_${suffix}`, ids.environment, ["system.info"], "[]"]
+    [`agt_bad_tailscale_${suffix}`, ids.environment, ["system.info"], "{}", "[]"]
+  );
+  await assertRejectsConstraint(
+    "non-array capability packs",
+    "chk_agents_capability_packs_array",
+    `
+      INSERT INTO agents (
+        id,
+        environment_id,
+        name,
+        version,
+        status,
+        capabilities,
+        capability_packs,
+        tailscale
+      )
+      VALUES ($1, $2, 'bad-capability-packs-agent', 'test', 'online', $3, $4, $5)
+    `,
+    [`agt_bad_capability_packs_${suffix}`, ids.environment, ["system.info"], "{}", "{}"]
   );
   await assertRejectsConstraint(
     "invalid session mode",
@@ -438,11 +458,12 @@ async function seedValidGraph() {
         version,
         status,
         capabilities,
+        capability_packs,
         tailscale
       )
-      VALUES ($1, $2, 'schema-smoke-agent', 'test', 'online', $3, $4)
+      VALUES ($1, $2, 'schema-smoke-agent', 'test', 'online', $3, $4, $5)
     `,
-    [ids.agent, ids.environment, ["system.info"], "{}"]
+    [ids.agent, ids.environment, ["system.info"], "[]", "{}"]
   );
   await client.query(
     `

@@ -42,6 +42,59 @@ func TestRegistryIncludesWorkloadCapabilities(t *testing.T) {
 	}
 }
 
+func TestRegistryExposesValidatedWorkloadPackMetadata(t *testing.T) {
+	registry := NewRegistry()
+	packs := registry.Packs()
+	if len(packs) < 3 {
+		t.Fatalf("expected host, docker, and kubernetes packs, got %v", packs)
+	}
+
+	for _, pack := range packs {
+		if pack.Name == "" || pack.Version == "" || pack.Workload == "" {
+			t.Fatalf("expected complete pack metadata, got %+v", pack)
+		}
+		if !pack.ReadOnly {
+			t.Fatalf("expected pack %s to be read-only", pack.Name)
+		}
+		if len(pack.Capabilities) == 0 {
+			t.Fatalf("expected pack %s to declare capabilities", pack.Name)
+		}
+		for _, capability := range pack.Capabilities {
+			if !capability.ReadOnly || capability.Name == "" || capability.Description == "" {
+				t.Fatalf("expected read-only capability metadata, got %+v", capability)
+			}
+		}
+	}
+}
+
+func TestRegistryAcceptsAnAdditionalReadOnlyWorkloadPack(t *testing.T) {
+	registry, err := NewRegistryWithPacks(WorkloadPack{
+		Metadata: protocol.WorkloadPackMetadata{
+			Name:     "database",
+			Version:  "1.0.0",
+			Workload: "postgres",
+			ReadOnly: true,
+			Capabilities: []protocol.CapabilityMetadata{{
+				Name:        protocol.Capability("database.schema"),
+				Description: "Read database schema metadata",
+				ReadOnly:    true,
+			}},
+		},
+		Handlers: map[protocol.Capability]Handler{
+			protocol.Capability("database.schema"): func(context.Context, map[string]any) (any, error) {
+				return map[string]any{"ok": true}, nil
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected custom read-only pack to be accepted: %v", err)
+	}
+
+	if _, err := registry.Execute(context.Background(), protocol.Capability("database.schema"), nil); err != nil {
+		t.Fatalf("expected custom capability to execute: %v", err)
+	}
+}
+
 func TestWorkloadDiscoverReturnsHostWorkload(t *testing.T) {
 	registry := NewRegistry()
 	result, err := registry.Execute(context.Background(), protocol.CapabilityWorkloadDiscover, nil)

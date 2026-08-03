@@ -14,6 +14,21 @@ const (
 	CapabilityKubernetesResources Capability = "kubernetes.resources"
 )
 
+type CapabilityMetadata struct {
+	Name          Capability `json:"name"`
+	Description   string     `json:"description"`
+	ReadOnly      bool       `json:"readOnly"`
+	RequiredTools []string   `json:"requiredTools,omitempty"`
+}
+
+type WorkloadPackMetadata struct {
+	Name         string               `json:"name"`
+	Version      string               `json:"version"`
+	Workload     string               `json:"workload"`
+	ReadOnly     bool                 `json:"readOnly"`
+	Capabilities []CapabilityMetadata `json:"capabilities"`
+}
+
 type TailscaleState struct {
 	Enabled        bool     `json:"enabled"`
 	Tailnet        string   `json:"tailnet,omitempty"`
@@ -24,11 +39,12 @@ type TailscaleState struct {
 }
 
 type EnrollRequest struct {
-	EnvironmentID string          `json:"environmentId"`
-	Name          string          `json:"name"`
-	Version       string          `json:"version"`
-	Capabilities  []Capability    `json:"capabilities"`
-	Tailscale     *TailscaleState `json:"tailscale,omitempty"`
+	EnvironmentID string                 `json:"environmentId"`
+	Name          string                 `json:"name"`
+	Version       string                 `json:"version"`
+	Capabilities  []Capability           `json:"capabilities"`
+	Packs         []WorkloadPackMetadata `json:"packs,omitempty"`
+	Tailscale     *TailscaleState        `json:"tailscale,omitempty"`
 }
 
 type EnrollResponse struct {
@@ -54,16 +70,17 @@ type TailscaleReply struct {
 }
 
 type Agent struct {
-	ID            string         `json:"id"`
-	EnvironmentID string         `json:"environmentId"`
-	Name          string         `json:"name"`
-	Version       string         `json:"version"`
-	Status        string         `json:"status"`
-	Capabilities  []Capability   `json:"capabilities"`
-	Tailscale     TailscaleState `json:"tailscale"`
-	LastSeenAt    string         `json:"lastSeenAt"`
-	LeaseExpiresAt string         `json:"leaseExpiresAt"`
-	CreatedAt     string         `json:"createdAt"`
+	ID             string                 `json:"id"`
+	EnvironmentID  string                 `json:"environmentId"`
+	Name           string                 `json:"name"`
+	Version        string                 `json:"version"`
+	Status         string                 `json:"status"`
+	Capabilities   []Capability           `json:"capabilities"`
+	Packs          []WorkloadPackMetadata `json:"packs,omitempty"`
+	Tailscale      TailscaleState         `json:"tailscale"`
+	LastSeenAt     string                 `json:"lastSeenAt"`
+	LeaseExpiresAt string                 `json:"leaseExpiresAt"`
+	CreatedAt      string                 `json:"createdAt"`
 }
 
 type Task struct {

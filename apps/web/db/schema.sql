@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS agents (
   credential_generation INTEGER NOT NULL DEFAULT 0,
   revoked_at TIMESTAMPTZ,
   capabilities TEXT[] NOT NULL DEFAULT '{}',
+  capability_packs JSONB NOT NULL DEFAULT '[]'::jsonb,
   tailscale JSONB NOT NULL DEFAULT '{}'::jsonb,
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   lease_expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '120 seconds',
@@ -165,6 +166,16 @@ BEGIN
     ALTER TABLE agents
       ADD CONSTRAINT chk_agents_tailscale_object
       CHECK (jsonb_typeof(tailscale) = 'object');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_agents_capability_packs_array'
+      AND conrelid = 'agents'::regclass
+  ) THEN
+    ALTER TABLE agents
+      ADD CONSTRAINT chk_agents_capability_packs_array
+      CHECK (jsonb_typeof(capability_packs) = 'array');
   END IF;
 
   IF NOT EXISTS (

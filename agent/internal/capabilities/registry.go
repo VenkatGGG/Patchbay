@@ -16,24 +16,55 @@ import (
 
 type Handler func(context.Context, map[string]any) (any, error)
 
+type WorkloadPack struct {
+	Metadata protocol.WorkloadPackMetadata
+	Handlers map[protocol.Capability]Handler
+}
+
 type Registry struct {
 	handlers map[protocol.Capability]Handler
+	packs    []protocol.WorkloadPackMetadata
 }
 
 func NewRegistry() *Registry {
-	return &Registry{
-		handlers: map[protocol.Capability]Handler{
-			protocol.CapabilityWorkloadDiscover:    workloadDiscover,
-			protocol.CapabilityCloudMetadata:       cloudMetadata,
-			protocol.CapabilitySystemInfo:          systemInfo,
-			protocol.CapabilityProcessList:         processList,
-			protocol.CapabilityDiskUsage:           diskUsage,
-			protocol.CapabilityNetworkConnections:  networkConnections,
-			protocol.CapabilityLogsSearch:          logsSearch,
-			protocol.CapabilityDockerContainers:    dockerContainers,
-			protocol.CapabilityKubernetesResources: kubernetesResources,
-		},
+	registry, err := NewRegistryWithPacks(builtinWorkloadPacks()...)
+	if err != nil {
+		panic(err)
 	}
+	return registry
+}
+
+func NewRegistryWithPacks(packs ...WorkloadPack) (*Registry, error) {
+	registry := &Registry{
+		handlers: map[protocol.Capability]Handler{},
+		packs:    make([]protocol.WorkloadPackMetadata, 0, len(packs)),
+	}
+
+	for _, pack := range packs {
+		if err := validateWorkloadPack(pack); err != nil {
+			return nil, err
+		}
+		for _, capability := range pack.Metadata.Capabilities {
+			if _, exists := registry.handlers[capability.Name]; exists {
+				return nil, fmt.Errorf("duplicate capability: %s", capability.Name)
+			}
+			registry.handlers[capability.Name] = pack.Handlers[capability.Name]
+		}
+		registry.packs = append(registry.packs, clonePackMetadata(pack.Metadata))
+	}
+
+	sort.Slice(registry.packs, func(i, j int) bool {
+		return registry.packs[i].Name < registry.packs[j].Name
+	})
+	return registry, nil
+}
+
+func (registry *Registry) Packs() []protocol.WorkloadPackMetadata {
+	packs := make([]protocol.WorkloadPackMetadata, 0, len(registry.packs))
+	for _, pack := range registry.packs {
+		packs = append(packs, clonePackMetadata(pack))
+	}
+	return packs
 }
 
 func (registry *Registry) Names() []protocol.Capability {
@@ -54,6 +85,136 @@ func (registry *Registry) Execute(ctx context.Context, capability protocol.Capab
 	taskCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	return handler(taskCtx, params)
+}
+
+func validateWorkloadPack(pack WorkloadPack) error {
+	if strings.TrimSpace(pack.Metadata.Name) == "" {
+		return fmt.Errorf("workload pack name is required")
+	}
+	if strings.TrimSpace(pack.Metadata.Version) == "" {
+		return fmt.Errorf("workload pack %s version is required", pack.Metadata.Name)
+	}
+	if strings.TrimSpace(pack.Metadata.Workload) == "" {
+		return fmt.Errorf("workload pack %s workload is required", pack.Metadata.Name)
+	}
+	if !pack.Metadata.ReadOnly {
+		return fmt.Errorf("workload pack %s must be read-only", pack.Metadata.Name)
+	}
+	if len(pack.Metadata.Capabilities) == 0 {
+		return fmt.Errorf("workload pack %s must declare capabilities", pack.Metadata.Name)
+	}
+
+	for _, capability := range pack.Metadata.Capabilities {
+		if capability.Name == "" {
+			return fmt.Errorf("workload pack %s has an empty capability", pack.Metadata.Name)
+		}
+		if strings.TrimSpace(capability.Description) == "" {
+			return fmt.Errorf("capability %s description is required", capability.Name)
+		}
+		if !capability.ReadOnly {
+			return fmt.Errorf("capability %s must be read-only", capability.Name)
+		}
+		if _, ok := pack.Handlers[capability.Name]; !ok {
+			return fmt.Errorf("capability %s has no handler", capability.Name)
+		}
+	}
+
+	for capability := range pack.Handlers {
+		found := false
+		for _, declared := range pack.Metadata.Capabilities {
+			if declared.Name == capability {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("handler %s is not declared by workload pack %s", capability, pack.Metadata.Name)
+		}
+	}
+	return nil
+}
+
+func clonePackMetadata(pack protocol.WorkloadPackMetadata) protocol.WorkloadPackMetadata {
+	clone := pack
+	clone.Capabilities = append([]protocol.CapabilityMetadata(nil), pack.Capabilities...)
+	for index := range clone.Capabilities {
+		clone.Capabilities[index].RequiredTools = append(
+			[]string(nil),
+			pack.Capabilities[index].RequiredTools...,
+		)
+	}
+	return clone
+}
+
+func builtinWorkloadPacks() []WorkloadPack {
+	return []WorkloadPack{
+		{
+			Metadata: protocol.WorkloadPackMetadata{
+				Name:     "host",
+				Version:  "1.0.0",
+				Workload: "host",
+				ReadOnly: true,
+				Capabilities: []protocol.CapabilityMetadata{
+					{Name: protocol.CapabilityWorkloadDiscover, Description: "Discover host workload visibility and local read-only tools", ReadOnly: true},
+					{Name: protocol.CapabilitySystemInfo, Description: "Collect host operating system and runtime metadata", ReadOnly: true},
+					{Name: protocol.CapabilityProcessList, Description: "Collect a bounded process listing", ReadOnly: true, RequiredTools: []string{"ps"}},
+					{Name: protocol.CapabilityDiskUsage, Description: "Collect bounded filesystem usage information", ReadOnly: true, RequiredTools: []string{"df"}},
+					{Name: protocol.CapabilityNetworkConnections, Description: "Collect bounded established network connections", ReadOnly: true, RequiredTools: []string{"lsof", "netstat"}},
+					{Name: protocol.CapabilityLogsSearch, Description: "Search explicitly provided log paths with redaction", ReadOnly: true},
+				},
+			},
+			Handlers: map[protocol.Capability]Handler{
+				protocol.CapabilityWorkloadDiscover:   workloadDiscover,
+				protocol.CapabilitySystemInfo:         systemInfo,
+				protocol.CapabilityProcessList:        processList,
+				protocol.CapabilityDiskUsage:          diskUsage,
+				protocol.CapabilityNetworkConnections: networkConnections,
+				protocol.CapabilityLogsSearch:         logsSearch,
+			},
+		},
+		{
+			Metadata: protocol.WorkloadPackMetadata{
+				Name:     "cloud-metadata",
+				Version:  "1.0.0",
+				Workload: "cloud",
+				ReadOnly: true,
+				Capabilities: []protocol.CapabilityMetadata{{
+					Name: protocol.CapabilityCloudMetadata, Description: "Probe read-only instance metadata for supported cloud providers", ReadOnly: true,
+				}},
+			},
+			Handlers: map[protocol.Capability]Handler{
+				protocol.CapabilityCloudMetadata: cloudMetadata,
+			},
+		},
+		{
+			Metadata: protocol.WorkloadPackMetadata{
+				Name:     "docker",
+				Version:  "1.0.0",
+				Workload: "docker",
+				ReadOnly: true,
+				Capabilities: []protocol.CapabilityMetadata{{
+					Name: protocol.CapabilityDockerContainers, Description: "Collect bounded Docker container metadata", ReadOnly: true, RequiredTools: []string{"docker"},
+				}},
+			},
+			Handlers: map[protocol.Capability]Handler{
+				protocol.CapabilityDockerContainers: dockerContainers,
+			},
+		},
+		{
+			Metadata: protocol.WorkloadPackMetadata{
+				Name:     "kubernetes",
+				Version:  "1.0.0",
+				Workload: "kubernetes",
+				ReadOnly: true,
+				Capabilities: []protocol.CapabilityMetadata{{
+					Name: protocol.CapabilityKubernetesResources, Description: "Collect bounded Kubernetes resources and events", ReadOnly: true, RequiredTools: []string{"kubectl"},
+				}},
+			},
+			Handlers: map[protocol.Capability]Handler{
+				protocol.CapabilityKubernetesResources: kubernetesResources,
+			},
+		},
+	}
 }
 
 func systemInfo(_ context.Context, _ map[string]any) (any, error) {

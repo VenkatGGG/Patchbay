@@ -13,7 +13,8 @@ import {
   TaskEvent,
   TaskEventLevel,
   TaskStatus,
-  TailscaleState
+  TailscaleState,
+  WorkloadPackMetadata
 } from "./types";
 
 const { Pool } = pg;
@@ -23,6 +24,7 @@ type EnrollAgentInput = {
   name: string;
   version: string;
   capabilities: Capability[];
+  packs?: WorkloadPackMetadata[];
   tailscale?: Partial<TailscaleState>;
 };
 
@@ -233,6 +235,7 @@ class MemoryStore implements PatchbayStore {
       status: "online",
       credentialGeneration: 0,
       capabilities: filterReadOnlyCapabilities(input.capabilities),
+      packs: normalizeWorkloadPacks(input.packs),
       tailscale,
       lastSeenAt: enrolledAt,
       leaseExpiresAt: leaseExpiry(enrolledAt),
@@ -242,7 +245,8 @@ class MemoryStore implements PatchbayStore {
     this.agents.set(agent.id, agent);
     this.addAudit("agent.enrolled", agent.id, agent.id, {
       environmentId: input.environmentId,
-      capabilities: agent.capabilities
+      capabilities: agent.capabilities,
+      packs: agent.packs
     });
     return agent;
   }
@@ -773,6 +777,7 @@ class PostgresStore implements PatchbayStore {
     const id = makeId("agt");
     const tailscale = normalizeTailscale(input.tailscale);
     const capabilities = filterReadOnlyCapabilities(input.capabilities);
+    const packs = normalizeWorkloadPacks(input.packs);
 
     const result = await this.pool.query(
       `
@@ -785,12 +790,13 @@ class PostgresStore implements PatchbayStore {
           credential_generation,
           revoked_at,
           capabilities,
+          capability_packs,
           tailscale,
           last_seen_at,
           lease_expires_at,
           created_at
         )
-        VALUES ($1, $2, $3, $4, 'online', 0, NULL, $5, $6, now(), now() + make_interval(secs => $7::int), now())
+        VALUES ($1, $2, $3, $4, 'online', 0, NULL, $5, $6, $7, now(), now() + make_interval(secs => $8::int), now())
         RETURNING *
       `,
       [
@@ -799,6 +805,7 @@ class PostgresStore implements PatchbayStore {
         input.name,
         input.version,
         capabilities,
+        JSON.stringify(packs),
         JSON.stringify(tailscale),
         agentLeaseSeconds()
       ]
@@ -807,7 +814,8 @@ class PostgresStore implements PatchbayStore {
     const agent = toAgent(result.rows[0]);
     await this.addAudit("agent.enrolled", agent.id, agent.id, {
       environmentId: input.environmentId,
-      capabilities: agent.capabilities
+      capabilities: agent.capabilities,
+      packs: agent.packs
     });
     return agent;
   }
@@ -1496,6 +1504,18 @@ const paramsFor = (capability: Capability): Record<string, unknown> => {
 const filterReadOnlyCapabilities = (capabilities: Capability[]) =>
   capabilities.filter((capability) => READ_ONLY_CAPABILITIES.includes(capability));
 
+const normalizeWorkloadPacks = (packs?: WorkloadPackMetadata[]) =>
+  (packs ?? [])
+    .filter((pack) => pack.readOnly)
+    .map((pack) => ({
+      ...pack,
+      capabilities: pack.capabilities.filter(
+        (capability) =>
+          capability.readOnly && READ_ONLY_CAPABILITIES.includes(capability.name)
+      )
+    }))
+    .filter((pack) => pack.capabilities.length > 0);
+
 const normalizeTailscale = (tailscale?: Partial<TailscaleState>): TailscaleState => ({
   enabled: Boolean(tailscale?.enabled),
   tailnet: tailscale?.tailnet,
@@ -1521,6 +1541,7 @@ const toAgent = (row: Record<string, unknown>): Agent => ({
   credentialGeneration: numberValue(row.credential_generation, 0),
   revokedAt: optionalIsoValue(row.revoked_at),
   capabilities: stringArray(row.capabilities) as Capability[],
+  packs: jsonValue<WorkloadPackMetadata[]>(row.capability_packs, []),
   tailscale: jsonValue<TailscaleState>(row.tailscale, {
     enabled: false,
     tags: ["tag:patchbay-agent"]

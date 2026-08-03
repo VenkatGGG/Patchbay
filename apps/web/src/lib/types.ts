@@ -12,6 +12,21 @@ export const READ_ONLY_CAPABILITIES = [
 
 export type Capability = (typeof READ_ONLY_CAPABILITIES)[number];
 
+export type CapabilityMetadata = {
+  name: Capability;
+  description: string;
+  readOnly: true;
+  requiredTools?: string[];
+};
+
+export type WorkloadPackMetadata = {
+  name: string;
+  version: string;
+  workload: string;
+  readOnly: true;
+  capabilities: CapabilityMetadata[];
+};
+
 export type AgentStatus = "online" | "idle" | "offline";
 export type SessionStatus = "active" | "expired" | "closed";
 export type TaskStatus = "queued" | "running" | "completed" | "failed" | "denied";
@@ -42,6 +57,7 @@ export type Agent = {
   credentialGeneration: number;
   revokedAt?: string;
   capabilities: Capability[];
+  packs: WorkloadPackMetadata[];
   tailscale: TailscaleState;
   lastSeenAt: string;
   leaseExpiresAt: string;

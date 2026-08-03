@@ -25,6 +25,24 @@ const enrollSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
   capabilities: z.array(z.enum(READ_ONLY_CAPABILITIES)).min(1),
+  packs: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        version: z.string().min(1),
+        workload: z.string().min(1),
+        readOnly: z.literal(true),
+        capabilities: z.array(
+          z.object({
+            name: z.enum(READ_ONLY_CAPABILITIES),
+            description: z.string().min(1),
+            readOnly: z.literal(true),
+            requiredTools: z.array(z.string().min(1)).optional()
+          })
+        )
+      })
+    )
+    .optional(),
   tailscale: z
     .object({
       enabled: z.boolean().optional(),

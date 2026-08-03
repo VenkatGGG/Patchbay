@@ -20,6 +20,7 @@ func Run(ctx context.Context, config Config, logger *slog.Logger) error {
 		Name:          config.Name,
 		Version:       Version,
 		Capabilities:  registry.Names(),
+		Packs:         registry.Packs(),
 		Tailscale:     &tailscaleState,
 	})
 	if err != nil {
