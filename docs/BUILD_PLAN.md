@@ -17,11 +17,11 @@ investigations, Gemini/offline planning and synthesis, evidence/findings
 lineage, operator views, Tailscale auth-key lifecycle handling, and deployment
 and recovery runbooks.
 
-The local live PostgreSQL gate still requires a running Docker daemon. CI runs
-the Postgres migration, integration, timeout, retention, schema, Compose, and
-production-image checks. Live Gemini and Tailscale calls are intentionally
-manual validations using credentials supplied through an external secret
-store.
+The local live PostgreSQL gate requires a running Docker daemon and now passes
+for schema, integration, timeout, and retention checks. CI runs the same checks
+against the exact PostgreSQL 18 image plus Compose and production-image checks.
+Live Gemini and Tailscale calls are intentionally manual validations using
+credentials supplied through an external secret store.
 
 ## Milestone 1: Open Diagnostic Core
 

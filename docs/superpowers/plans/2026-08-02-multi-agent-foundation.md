@@ -29,8 +29,10 @@ Completed and pushed on `codex/multi-agent-foundation`:
 
 Remaining verification or product follow-up:
 
-- Run the live PostgreSQL migration and integration suite when a Docker daemon
-  is available locally; CI already runs the same Postgres checks.
+- The live PostgreSQL migration, schema, integration, timeout, and retention
+  checks pass locally. The machine used its cached PostgreSQL 16 Alpine image
+  under the Compose `postgres:18-alpine` tag because the 18 image pull stalled;
+  CI remains the exact PostgreSQL 18 gate.
 - Run live Gemini and Tailscale validations only with rotated credentials in an
   external secret store. The repository contains fake-provider tests for both.
 - Future product work: OAuth setup UI, direct Tailscale device removal hooks,
@@ -47,7 +49,7 @@ Remaining verification or product follow-up:
 
 ## Execution Sequence
 
-1. [pending] Verify the live PostgreSQL migration and integration suite after Docker is available. Fix only failures found by that gate.
+1. [completed] Verify the live PostgreSQL migration and integration suite after Docker is available. Fix only failures found by that gate.
 2. [completed] Refactor diagnostic creation and task claiming so one capability task is claimable by one eligible agent, with atomic PostgreSQL claiming.
 3. [completed] Add configurable agent leases and heartbeat refresh during polling; mark stale agents offline and audit the transition.
 4. [completed] Requeue tasks from stale agents and let another eligible agent claim them without losing event history.
@@ -61,7 +63,7 @@ Remaining verification or product follow-up:
 12. [completed] Feed plan state, findings, and evidence references into Gemini synthesis and the offline synthesis provider.
 13. [completed] Add operator views for plan progress, agent leases, task reassignment, evidence, findings, and synthesis.
 14. [completed] Harden Tailscale lifecycle and publish the self-hosted deployment, security, and recovery runbooks.
-15. [in progress] Add a complete two-agent incident scenario and run the full release verification suite.
+15. [completed] Add a complete two-agent incident scenario and run the full release verification suite.
 
 ## First Implementation Commit
 
