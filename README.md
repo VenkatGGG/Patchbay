@@ -126,6 +126,18 @@ compose. The tracked compose defaults require signed enrollment and signed agent
 API tokens. Local env files are excluded from the Docker build context so
 secrets are injected at runtime, not baked into the image.
 
+For production HTTPS and private web binding, use the Caddy overlay described in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md):
+
+```bash
+PATCHBAY_DOMAIN=patchbay.example.com \
+  docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d
+```
+
+Use `pnpm test:production-deployment` before starting the overlay. PostgreSQL
+backup and restore helpers are available under `scripts/ops/` and require an
+explicit `DATABASE_URL` plus a destination/source path.
+
 ### Tests
 
 ```bash

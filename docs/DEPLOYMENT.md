@@ -73,6 +73,40 @@ authorization.
    A production-like deployment should report signed enrollment, signed agent
    authentication, PostgreSQL, Gemini, and Tailscale as ready.
 
+## Production Compose With HTTPS
+
+Use the production overlay when the web service must sit behind an HTTPS edge:
+
+```bash
+PATCHBAY_DOMAIN=patchbay.example.com \
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.production.yml \
+  up --build -d
+```
+
+The overlay binds the Next.js service to `127.0.0.1:3000` and exposes only
+Caddy on ports `80` and `443`. Caddy terminates TLS, redirects HTTP to HTTPS,
+and proxies to the healthy internal web service. Set `PATCHBAY_HTTP_BIND` and
+`PATCHBAY_HTTPS_BIND` to narrower host addresses when the edge is itself behind
+another private load balancer. Do not expose the base Compose web port in a
+production deployment.
+
+Before starting the overlay, validate the rendered configuration without
+starting services:
+
+```bash
+pnpm test:production-deployment
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.production.yml \
+  config
+```
+
+The deployment check ensures that the web port remains private, required auth
+defaults remain enabled, health checks are present, and Caddy cannot receive
+the OAuth or database credentials as image-layer defaults.
+
 5. Create an environment enrollment token from the dashboard or the operator
    API. The token is single-use and environment-scoped. Start an agent in the
    target environment with:
@@ -99,6 +133,27 @@ authorization.
   agent signing secrets.
 - Use a managed or separately backed-up PostgreSQL service for important
   incidents.
+- For managed PostgreSQL, set `DATABASE_URL` from the provider's secret store,
+  allow the control-plane network, enable TLS according to the provider's
+  connection policy, and run `pnpm test:postgres:schema` during provisioning.
+- Keep backups outside the Compose volume. Create a custom-format backup with:
+
+  ```bash
+  DATABASE_URL="$DATABASE_URL" \
+    node scripts/ops/backup-postgres.mjs "./backups/patchbay-$(date +%Y%m%d-%H%M%S).dump"
+  ```
+
+  The helper passes parsed connection fields to `pg_dump` without placing the
+  full URL in command arguments or output. Restore only into a maintenance
+  database after confirming the target and backup provenance:
+
+  ```bash
+  DATABASE_URL="$DATABASE_URL" \
+    node scripts/ops/restore-postgres.mjs ./backups/patchbay-<timestamp>.dump
+  ```
+
+  Restore uses `pg_restore --clean --if-exists`; it is intentionally a
+  maintenance operation and is not run automatically by Patchbay.
 - Restrict Tailscale OAuth tag permissions to Patchbay agent and environment
   tags. Do not grant broad device or admin permissions.
 - Keep the agent read-only. No capability in this release executes shell,
