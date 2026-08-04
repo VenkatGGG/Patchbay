@@ -25,6 +25,14 @@ Denied:
 - Kubernetes mutations.
 - Database writes.
 
+Remediation gate:
+
+- No remediation capability namespace exists in v0.
+- The control plane does not expose restart, rollback, delete, shell, or write
+  routes.
+- Future write actions must use a separate capability namespace and require an
+  explicit security review, operator approval, idempotency, and rollback plan.
+
 ## Defense In Depth
 
 Network layer:

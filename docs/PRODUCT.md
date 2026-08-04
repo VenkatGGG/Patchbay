@@ -45,6 +45,14 @@ Out of scope for v0:
 - Secret reads.
 - Autonomous remediation.
 
+## Remediation Gate
+
+Remediation remains deferred until the read-only investigation workflow has
+stable policy review, approval, audit, and rollback semantics. The v0 API and
+agent capability registry must not create remediation tasks or accept
+mutation-like capabilities. Any future write action is a separate approved
+milestone, not an implicit extension of the diagnostic task path.
+
 ## First Incident Scenario
 
 The first end-to-end scenario is a latency spike investigation. It is broadly

@@ -37,6 +37,8 @@ The initial demo will focus on an on-call latency investigation:
 6. Close the session when the diagnostic window should end.
 
 No remediation actions execute in v0.
+Remediation is a separate future milestone and is intentionally absent from the
+v0 API, agent capability registry, and dashboard controls.
 
 ## Development
 
