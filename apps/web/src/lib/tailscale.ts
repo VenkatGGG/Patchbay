@@ -112,12 +112,17 @@ export function tailscaleEnvironmentTag(environmentId: string) {
 }
 
 export function tailscaleRuntimeStatus() {
-  const { tailnet, clientId, clientSecret } = tailscaleConfig();
+  const { tailnet, clientId, clientSecret, rawAuthKeyTags } = tailscaleConfig();
+  const parsedTags = safeAuthKeyTags(rawAuthKeyTags);
 
   return {
     configured: Boolean(tailnet && clientId && clientSecret),
     tailnetConfigured: Boolean(tailnet),
-    oauthClientConfigured: Boolean(clientId && clientSecret)
+    oauthClientConfigured: Boolean(clientId && clientSecret),
+    tailnet: tailnet || undefined,
+    authKeyTags: parsedTags ?? ["tag:patchbay-agent", "tag:patchbay-env-local"],
+    authKeyTagsValid: parsedTags !== undefined || !rawAuthKeyTags?.trim(),
+    timeoutMs: tailscaleTimeoutMs()
   };
 }
 
@@ -188,6 +193,14 @@ function parseAuthKeyTags(rawTags?: string) {
   }
 
   return [...new Set(tags)];
+}
+
+function safeAuthKeyTags(rawTags?: string) {
+  try {
+    return parseAuthKeyTags(rawTags);
+  } catch {
+    return undefined;
+  }
 }
 
 function tailscaleApiUrl(apiBaseUrl: string, path: string) {

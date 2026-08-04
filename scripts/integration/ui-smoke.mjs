@@ -83,6 +83,9 @@ async function main() {
     "Patchbay",
     "Incident Sessions",
     "Runtime Posture",
+    "Network Setup",
+    "OAuth secrets stay in deployment environment",
+    "Remediation deferred",
     "Readiness Checks",
     "Agent Enrollment",
     "Agent command",
@@ -213,6 +216,7 @@ function assertUiHardeningSource() {
 
   for (const expected of [
     "function TableViewport",
+    "function TailscaleSetup",
     'role="region"',
     "tabIndex={0}",
     "Enrolled agents",
@@ -220,6 +224,8 @@ function assertUiHardeningSource() {
     "Incident sessions",
     'className="table-action"',
     'label: "Retention"',
+    "TAILSCALE_TIMEOUT_MS",
+    "docs/DEPLOYMENT.md",
     "readyResponse.status === 503",
     "setRuntimeStatus(readyBody)",
     "runtimeStatus !== null &&",

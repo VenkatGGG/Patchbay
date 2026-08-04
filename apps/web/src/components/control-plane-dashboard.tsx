@@ -73,6 +73,10 @@ type RuntimeStatus = {
     configured: boolean;
     tailnetConfigured: boolean;
     oauthClientConfigured: boolean;
+    tailnet?: string;
+    authKeyTags: string[];
+    authKeyTagsValid: boolean;
+    timeoutMs: number;
   };
   posture: ReadinessPosture;
   counts: {
@@ -625,6 +629,14 @@ export function ControlPlaneDashboard({
             </Panel>
 
             <Panel
+              icon={<KeyRound size={17} />}
+              title="Network Setup"
+              subtitle="Tailscale OAuth stays environment-managed"
+            >
+              <TailscaleSetup runtimeStatus={runtimeStatus} />
+            </Panel>
+
+            <Panel
               icon={<ShieldCheck size={17} />}
               title="Readiness Checks"
               subtitle={runtimeStatus?.posture.level ?? "pending"}
@@ -1115,6 +1127,72 @@ function RuntimePosture({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null
           <StatusPill value={item.status} />
         </div>
       ))}
+    </div>
+  );
+}
+
+function TailscaleSetup({ runtimeStatus }: { runtimeStatus: RuntimeStatus | null }) {
+  const tailscale = runtimeStatus?.tailscale;
+  const configured = tailscale?.configured === true;
+  const tags = tailscale?.authKeyTags.join(", ") ?? "pending";
+
+  return (
+    <div className="setup-stack">
+      <div className="setup-heading">
+        <div>
+          <strong>{configured ? "Automation configured" : "Configuration required"}</strong>
+          <span>
+            {configured
+              ? "Agent enrollment can mint tagged ephemeral auth keys."
+              : "Set the OAuth values in the deployment environment before enrolling agents."}
+          </span>
+        </div>
+        <StatusPill value={configured ? "ready" : "warning"} />
+      </div>
+      <dl className="setup-details">
+        <div>
+          <dt>Tailnet</dt>
+          <dd>{tailscale?.tailnet ?? "not configured"}</dd>
+        </div>
+        <div>
+          <dt>OAuth client</dt>
+          <dd>{tailscale?.oauthClientConfigured ? "configured" : "not configured"}</dd>
+        </div>
+        <div>
+          <dt>Auth key tags</dt>
+          <dd>{tags}</dd>
+        </div>
+        <div>
+          <dt>API timeout</dt>
+          <dd>{tailscale ? `${tailscale.timeoutMs} ms` : "pending"}</dd>
+        </div>
+      </dl>
+      <div className="setup-note">
+        <ShieldCheck size={16} />
+        <div>
+          <strong>OAuth secrets stay in deployment environment</strong>
+          <span>
+            Patchbay never stores or renders the client secret. See the deployment
+            runbook for `TAILSCALE_TAILNET`, OAuth credentials, tag policy, and
+            `TAILSCALE_TIMEOUT_MS`.
+          </span>
+        </div>
+      </div>
+      <div className="setup-note deferred">
+        <ShieldAlert size={16} />
+        <div>
+          <strong>Remediation deferred</strong>
+          <span>Patchbay v0 only plans and executes read-only diagnostics.</span>
+        </div>
+      </div>
+      <a
+        className="setup-link"
+        href="https://github.com/VenkatGGG/Patchbay/blob/main/docs/DEPLOYMENT.md"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Open deployment runbook
+      </a>
     </div>
   );
 }

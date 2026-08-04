@@ -724,6 +724,93 @@ button {
   gap: 10px;
 }
 
+.setup-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-heading,
+.setup-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setup-heading > div,
+.setup-note > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.setup-heading span,
+.setup-note span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.setup-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.setup-details div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfcf9;
+}
+
+.setup-details dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-details dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.setup-note {
+  justify-content: flex-start;
+  border-left: 3px solid var(--green);
+  padding: 8px 10px;
+  background: var(--green-soft);
+}
+
+.setup-note svg {
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+.setup-note.deferred {
+  border-left-color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.setup-note.deferred svg {
+  color: var(--amber);
+}
+
+.setup-link {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.setup-link:hover {
+  text-decoration: underline;
+}
+
 .readiness-item {
   display: grid;
   gap: 6px;
@@ -811,7 +898,8 @@ button {
   .grid,
   .metric-grid,
   .health-grid,
-  .posture-grid {
+  .posture-grid,
+  .setup-details {
     grid-template-columns: 1fr;
   }
 

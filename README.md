@@ -251,6 +251,12 @@ list of tags that your Tailscale OAuth client is allowed to mint. Tailscale also
 supports `TAILSCALE_TAILNET=-` as shorthand for the tailnet that owns the OAuth
 access token.
 
+The dashboard's **Network Setup** panel reads this configuration through the
+sanitized readiness endpoint. It shows whether automation is configured, the
+tailnet, allowed auth-key tags, and API timeout, but never accepts or stores the
+OAuth client secret. Configure those values in `apps/web/.env.local` or your
+deployment secret store, then refresh readiness.
+
 ### Readiness Posture
 
 `/api/ready` returns service liveness plus structured readiness checks for
